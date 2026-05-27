@@ -233,6 +233,7 @@ module.exports = {
   // ---- messaging (Phase 4) ----
   conversationWith(viewerId, otherId) {
     otherId = Number(otherId);
+    if (otherId === viewerId) return null;
     const u = module.exports.userById(otherId); if (!u) return null;
     const conv = getOrCreateConv(viewerId, otherId);
     seedOpener(conv, otherId, viewerId);
@@ -244,7 +245,7 @@ module.exports = {
   },
   sendMessage(viewerId, otherId, body) {
     otherId = Number(otherId);
-    if (!module.exports.userById(otherId)) return null;
+    if (otherId === viewerId || !module.exports.userById(otherId)) return null;
     const conv = getOrCreateConv(viewerId, otherId);
     const m = { id: ++data.seq.messages, conversation_id: conv.id, sender_id: viewerId, body: String(body).slice(0, 2000), created_at: Date.now(), read_at: Date.now() };
     data.messages.push(m);

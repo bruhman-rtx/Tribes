@@ -8,7 +8,23 @@ const app = express();
 app.set('trust proxy', 1); // Railway terminates TLS; trust x-forwarded-* so req.secure is correct
 const PORT = process.env.PORT || 8077;
 const HOST = '0.0.0.0';
-app.use(express.json());
+app.use(express.json({ limit: '64kb' }));
+
+// ---- simple in-memory rate limiting (per IP) ----
+const rlHits = new Map();
+function rateLimit(tag, max, windowMs) {
+  return (req, res, next) => {
+    const key = tag + ':' + (req.ip || '?');
+    const now = Date.now();
+    const arr = (rlHits.get(key) || []).filter(t => now - t < windowMs);
+    if (arr.length >= max) return res.status(429).json({ error: 'too many requests — slow down a moment' });
+    arr.push(now); rlHits.set(key, arr); next();
+  };
+}
+const authLimiter = rateLimit('auth', 20, 60 * 1000);   // 20 signups/logins per IP per minute
+const writeLimiter = rateLimit('write', 200, 60 * 1000); // 200 writes per IP per minute
+app.use((req, res, next) => { if (req.method === 'POST') return writeLimiter(req, res, next); next(); });
+setInterval(() => { const now = Date.now(); for (const [k, a] of rlHits) if (!a.some(t => now - t < 60000)) rlHits.delete(k); }, 5 * 60 * 1000).unref?.();
 
 // ---- cookies / session ----
 function parseCookies(req) {
@@ -37,7 +53,7 @@ const requireAuth = (req, res, next) => req.user ? next() : res.status(401).json
 const emailRe = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 // ---- auth ----
-app.post('/api/auth/signup', async (req, res) => {
+app.post('/api/auth/signup', authLimiter, async (req, res) => {
   const { name, email, password, city } = req.body || {};
   if (!name || !String(name).trim()) return res.status(400).json({ error: 'name required' });
   if (!emailRe.test(email || '')) return res.status(400).json({ error: 'valid email required' });
@@ -49,7 +65,7 @@ app.post('/api/auth/signup', async (req, res) => {
   res.json({ user: db.publicUser(user), interests: [] });
 });
 
-app.post('/api/auth/signin', async (req, res) => {
+app.post('/api/auth/signin', authLimiter, async (req, res) => {
   const { email, password } = req.body || {};
   const user = db.userByEmail(email || '');
   if (!user || !(await bcrypt.compare(password || '', user.password_hash)))
