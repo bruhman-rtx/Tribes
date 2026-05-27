@@ -32,8 +32,13 @@ const API = {
   join:(slug)=>post('/api/tribes/'+slug+'/join',{}),
   leave:(slug)=>post('/api/tribes/'+slug+'/leave',{}),
   createPost:(slug,body)=>post('/api/tribes/'+slug+'/posts',{body}),
+  matchCandidates:()=>getJSON('/api/match/candidates'),
+  matches:()=>getJSON('/api/matches'),
+  userProfile:(id)=>getJSON('/api/users/'+id),
+  connect:(id)=>post('/api/match/'+id+'/connect',{}),
+  pass:(id)=>post('/api/match/'+id+'/pass',{}),
 };
-const STATE = { user:null, interests:[], interestIds:[], catalog:null, selected:new Set(), currentTribe:null };
+const STATE = { user:null, interests:[], interestIds:[], catalog:null, selected:new Set(), currentTribe:null, currentProfile:null, matchQueue:null, matchIdx:0 };
 
 const esc = (s)=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const num = (n)=>Number(n).toLocaleString();
@@ -55,6 +60,7 @@ function back(){ if(stack.length>1) stack.pop(); render(); }
 function tab(key){ stack=[TAB[key]]; render(); }
 function enterApp(){ stack=['05_discover']; render(); }
 function goTribe(slug){ STATE.currentTribe = slug; go('07_tribe'); }
+function goProfile(id){ STATE.currentProfile = Number(id); go('10_profile'); }
 function on(sel, fn){ stage.querySelectorAll(sel).forEach(el=>el.addEventListener('click',e=>{e.preventDefault();fn(el,e);})); }
 
 function showErr(msg){ let e=stage.querySelector('.formerr'); if(!e){ const a=stage.querySelector('.btn-primary'); if(!a)return; e=document.createElement('div'); e.className='formerr'; e.style.cssText='color:var(--accent-dark);font-size:13px;text-align:center;margin-top:12px;font-weight:600'; a.insertAdjacentElement('afterend',e);} e.textContent=msg; }
@@ -109,19 +115,25 @@ function wireTribeRows(sc, rerender){
     try{ joined?await API.leave(slug):await API.join(slug); }catch{} rerender(); }));
 }
 
+function personCard(c){
+  const sharedTags = c.shared.slice(0,2).map(x=>`<span class="tag shared"><i class="ph ph-check"></i>${esc(x)}</span>`).join('') + (c.shared.length>2?`<span class="tag">+${c.shared.length-2}</span>`:'');
+  return `<div class="card" data-uid="${c.id}" style="margin-bottom:10px;display:flex;gap:13px;align-items:flex-start;cursor:pointer"><div class="mono m ${c.tone}">${c.mono}</div><div class="grow"><div style="display:flex;justify-content:space-between;align-items:baseline"><span class="nm">${esc(c.name)}${c.age?', '+c.age:''}</span><span class="pill-count">${c.sharedCount} shared</span></div><div class="sub">${c.km} km away</div><div class="tags" style="margin-top:9px">${sharedTags}</div></div></div>`;
+}
 async function hydrateDiscover(){
   const sc=stage.querySelector('.scroll'); if(!sc) return;
   const d = await API.discover().catch(()=>null);
   const name=(STATE.user?.name||'there').split(' ')[0];
   const day=new Date().toLocaleDateString('en-US',{weekday:'long'}).toLowerCase();
-  const yours=d?.yourTribes||[], trending=d?.trending||[];
+  const yours=d?.yourTribes||[], trending=d?.trending||[], people=(d?.people||[]).filter(p=>p.sharedCount>0);
   const mini=t=>`<div data-slug="${t.slug}" style="text-align:center;width:62px;flex:none;cursor:pointer"><div class="mono l ${t.tone}" style="margin:0 auto 7px">${t.mono}</div><div style="font-size:11.5px;line-height:1.2;color:var(--ink-muted)">${esc(t.name)}</div></div>`;
   sc.innerHTML =
     `<div style="padding-top:8px"><div class="eyebrow">${day}</div><h1 class="h-xl" style="margin-top:4px">hey, ${esc(name)}.</h1></div>` +
-    (yours.length ? `<div class="sec"><h2>your tribes</h2></div><div style="display:flex;gap:16px;overflow:hidden">${yours.map(mini).join('')}</div>`
-                  : `<div class="card" style="margin-top:22px"><div class="muted" style="font-size:14px;line-height:1.5">you haven't joined a tribe yet — find your people below.</div></div>`) +
+    (yours.length ? `<div class="sec"><h2>your tribes</h2></div><div style="display:flex;gap:16px;overflow:hidden">${yours.map(mini).join('')}</div>` : '') +
+    (people.length ? `<div class="sec"><h2>share your interests</h2><a data-go-matches>see all</a></div>${people.map(personCard).join('')}` : '') +
     `<div class="sec"><h2>discover tribes</h2></div>` + trending.map(tribeRow).join('');
   wireTribeRows(sc, hydrateDiscover);
+  sc.querySelectorAll('[data-uid]').forEach(el=>el.addEventListener('click',()=>goProfile(el.dataset.uid)));
+  sc.querySelector('[data-go-matches]')?.addEventListener('click',()=>go('09_matches'));
 }
 
 async function hydrateSearch(){
@@ -174,6 +186,68 @@ async function hydrateCreate(){
   on('.topbar span:first-child', back);
 }
 
+// ---------- hydration: match engine (Phase 3) ----------
+async function hydrateMatch(){
+  const r = await API.matchCandidates().catch(()=>null);
+  STATE.matchQueue = r?.candidates || []; STATE.matchIdx = 0;
+  renderMatchCard();
+}
+function renderMatchCard(){
+  const sc=stage.querySelector('.scroll'); if(!sc) return;
+  const q=STATE.matchQueue||[], i=STATE.matchIdx||0;
+  if(i>=q.length){ sc.innerHTML=`<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center;gap:10px;padding:30px"><div class="mono xl t5" style="opacity:.6">·</div><div class="h-lg">that's everyone for now</div><div class="muted" style="font-size:14px;line-height:1.5">check back later for new people who share your interests.</div><button class="btn btn-soft" data-go-matches style="margin-top:8px">see your matches</button></div>`;
+    sc.querySelector('[data-go-matches]')?.addEventListener('click',()=>go('09_matches')); return; }
+  const c=q[i];
+  const shared = c.shared.map(x=>`<span class="tag shared"><i class="ph ph-check"></i>${esc(x)}</span>`).join('');
+  const also = c.also.slice(0,6).map(x=>`<span class="tag">${esc(x)}</span>`).join('');
+  sc.innerHTML =
+    `<div class="card" style="padding:22px;flex:1;display:flex;flex-direction:column;margin-top:6px">`+
+      `<div style="display:flex;align-items:center;gap:14px"><div class="mono xl ${c.tone}">${c.mono}</div><div><h1 class="h-lg">${esc(c.name)}${c.age?', '+c.age:''}</h1><div class="muted" style="font-size:13px;margin-top:4px;display:flex;align-items:center;gap:5px"><i class="ph ph-map-pin"></i>${c.km} km away</div></div></div>`+
+      (c.shared.length?`<div style="margin-top:22px"><div class="eyebrow" style="margin-bottom:9px">you both love</div><div class="tags">${shared}</div></div>`:'')+
+      (c.also.length?`<div style="margin-top:16px"><div class="eyebrow" style="margin-bottom:9px;color:var(--ink-soft)">also into</div><div class="tags">${also}</div></div>`:'')+
+      (c.bio?`<p style="font-size:14px;line-height:1.55;color:var(--ink-muted);margin-top:auto;padding-top:20px">${esc(c.bio)}</p>`:'<div style="margin-top:auto"></div>')+
+    `</div>`+
+    `<div style="display:flex;align-items:center;justify-content:center;gap:24px;padding:18px 0 8px">`+
+      `<button class="icon-btn" data-pass style="width:58px;height:58px;border:1.5px solid var(--ink);border-radius:8px;font-size:23px"><i class="ph ph-x"></i></button>`+
+      `<button class="icon-btn" data-connect style="width:66px;height:66px;background:var(--accent);color:var(--accent-ink);border-radius:8px;font-size:27px"><i class="ph ph-handshake"></i></button>`+
+    `</div>`+
+    `<div style="text-align:center;font-size:12px;color:var(--ink-soft)">${i+1} of ${q.length} · you share ${c.sharedCount} interest${c.sharedCount===1?'':'s'}</div>`;
+  const adv = async (fn)=>{ const b1=sc.querySelector('[data-pass]'),b2=sc.querySelector('[data-connect]'); if(b1)b1.style.pointerEvents='none'; if(b2)b2.style.pointerEvents='none'; await fn(c.id).catch(()=>{}); STATE.matchIdx=i+1; renderMatchCard(); };
+  sc.querySelector('[data-pass]').addEventListener('click',()=>adv(API.pass));
+  sc.querySelector('[data-connect]').addEventListener('click',()=>adv(API.connect));
+}
+
+async function hydrateMatches(){
+  const sc=stage.querySelector('.scroll'); if(!sc) return;
+  const r=await API.matches().catch(()=>null); const list=r?.matches||[];
+  const mono=m=>`<div data-uid="${m.id}" style="text-align:center;width:62px;flex:none;cursor:pointer"><div class="mono l ${m.tone}" style="margin:0 auto 7px">${m.mono}</div><div style="font-size:12px;color:var(--ink-muted)">${esc(m.name)}</div></div>`;
+  const row=m=>`<div class="row" data-uid="${m.id}"><div class="mono s ${m.tone}">${m.mono}</div><div class="grow"><div class="nm">${esc(m.name)}</div><div class="sub">${m.sharedCount} shared interest${m.sharedCount===1?'':'s'} · ${m.ago}</div></div><i class="ph ph-caret-right soft"></i></div>`;
+  sc.innerHTML = list.length
+    ? `<div class="sec" style="margin-top:4px"><h2>new — say hi</h2></div><div style="display:flex;gap:16px;overflow:hidden">${list.slice(0,5).map(mono).join('')}</div><div class="sec"><h2>all matches</h2><span class="muted" style="font-size:13px">${list.length}</span></div>${list.map(row).join('')}`
+    : `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:80%;text-align:center;gap:10px;padding:30px"><div class="h-lg">no matches yet</div><div class="muted" style="font-size:14px;line-height:1.5">go to match and connect with people who share your interests.</div></div>`;
+  sc.querySelectorAll('[data-uid]').forEach(el=>el.addEventListener('click',()=>goProfile(el.dataset.uid)));
+}
+
+async function hydrateProfile(){
+  const sc=stage.querySelector('.scroll'); if(!sc) return;
+  const id=STATE.currentProfile; const r=id?await API.userProfile(id).catch(()=>null):null; const p=r?.profile;
+  if(!p){ sc.innerHTML='<div class="card" style="margin-top:20px"><div class="muted">profile not found.</div></div>'; return; }
+  const shared=p.shared.map(x=>`<span class="tag shared"><i class="ph ph-check"></i>${esc(x)}</span>`).join('');
+  const also=p.also.slice(0,8).map(x=>`<span class="tag">${esc(x)}</span>`).join('');
+  sc.innerHTML =
+    `<div style="display:flex;flex-direction:column;align-items:center;text-align:center;padding-top:4px"><div class="mono xl ${p.tone}" style="width:104px;height:104px;font-size:42px">${p.mono}</div><h1 class="h-lg" style="margin-top:14px">${esc(p.name)}${p.age?', '+p.age:''}</h1><div class="muted" style="font-size:13px;margin-top:4px;display:flex;align-items:center;gap:5px"><i class="ph ph-map-pin"></i>${p.km} km away${p.tribes.length?' · '+p.tribes.length+' tribes':''}</div></div>`+
+    (p.shared.length?`<div class="card" style="margin-top:22px;background:var(--acc-50);border-color:var(--accent)"><div class="eyebrow" style="margin-bottom:10px">you both love</div><div class="tags">${shared}</div></div>`:'')+
+    (p.also.length?`<div class="sec"><h2>also into</h2></div><div class="tags">${also}</div>`:'')+
+    (p.bio?`<div class="sec"><h2>about</h2></div><p class="muted" style="font-size:14px;line-height:1.55">${esc(p.bio)}</p>`:'');
+  const connectBtn=stage.querySelector('.btn-primary');
+  if(connectBtn){
+    const setConnected=()=>{ connectBtn.textContent='connected'; connectBtn.classList.remove('btn-primary'); connectBtn.classList.add('btn-soft'); };
+    if(p.connected) setConnected();
+    connectBtn.addEventListener('click', async ()=>{ if(connectBtn.classList.contains('btn-soft'))return; await API.connect(p.id).catch(()=>{}); setConnected(); });
+  }
+  on('.btn-ghost', ()=>go('13_chat'));
+}
+
 // ---------- wiring ----------
 async function wire(id){
   stage.querySelectorAll('.tabbar a').forEach(a=>{ const key=(a.textContent||'').trim().toLowerCase(); a.addEventListener('click',e=>{e.preventDefault(); if(TAB[key]) tab(key);}); });
@@ -194,12 +268,9 @@ async function wire(id){
     case '05_discover': on('.icon-btn',()=>go('14_notifications')); await hydrateDiscover(); break;
     case '06_search': await hydrateSearch(); break;
     case '07_tribe': await hydrateTribe(); break;
-    case '08_match':
-      stage.querySelectorAll('.scroll > div:nth-of-type(2) .icon-btn').forEach((b,i)=>b.addEventListener('click',()=> i===1?go('13_chat'):render())); break;
-    case '09_matches':
-      on('.row',()=>go('10_profile'));
-      stage.querySelectorAll('.scroll > div:nth-of-type(2) > div').forEach(d=>d.addEventListener('click',()=>go('13_chat'))); break;
-    case '10_profile': on('.btn-ghost',()=>go('13_chat')); break;
+    case '08_match': on('.icon-btn',()=>go('09_matches')); await hydrateMatch(); break;
+    case '09_matches': await hydrateMatches(); break;
+    case '10_profile': await hydrateProfile(); break;
     case '11_me': await hydrateMe(); break;
     case '12_chats': on('.row',()=>go('13_chat')); break;
     case '14_notifications': on('.row',()=>go('10_profile')); break;

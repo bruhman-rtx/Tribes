@@ -112,6 +112,18 @@ function postPublic(p) {
   const u = data.users.find(x => x.id === p.user_id) || {};
   return { id:p.id, body:p.body, ago: ago(p.created_at), author:{ name:u.name||'someone', mono:(u.name||'?')[0].toLowerCase(), tone:u.tone||'t1', handle:u.handle } };
 }
+// ---- match engine helpers (Phase 3) ----
+const interestName = (id) => (data.interests.find(i => i.id === id) || {}).name;
+const distanceKm = (uid) => (((Math.abs((uid * 2654435761) >>> 0) % 90) / 10) + 0.3).toFixed(1); // stable 0.3–9.3
+const actedTargets = (uid) => new Set(data.connections.filter(c => c.from_user === uid).map(c => c.to_user));
+function userCard(viewerId, u) {
+  const mine = new Set(module.exports.userInterestIds(viewerId));
+  const theirs = module.exports.userInterestIds(u.id);
+  const shared = theirs.filter(id => mine.has(id)).map(interestName);
+  const also = theirs.filter(id => !mine.has(id)).map(interestName);
+  return { id:u.id, name:u.name, age:u.age, tone:u.tone, mono:(u.name||'?')[0].toLowerCase(),
+    km: distanceKm(u.id), bio:u.bio, shared, also, sharedCount: shared.length };
+}
 
 module.exports = {
   raw: data, CATALOG, publicUser, persistNow, ago,
@@ -161,6 +173,35 @@ module.exports = {
     const mine = module.exports.userTribes(uid);
     const mineSlugs = new Set(mine.map(t=>t.slug));
     const trending = data.tribes.map(t=>tribePublic(t,uid)).filter(t=>!mineSlugs.has(t.slug)).sort((a,b)=>b.members-a.members).slice(0,6);
-    return { yourTribes: mine, trending };
+    return { yourTribes: mine, trending, people: module.exports.matchCandidates(uid, 3) };
+  },
+
+  // ---- match engine (Phase 3) ----
+  matchCandidates(viewerId, limit = 20) {
+    const acted = actedTargets(viewerId);
+    return data.users.filter(u => u.id !== viewerId && !acted.has(u.id))
+      .map(u => userCard(viewerId, u))
+      .sort((a, b) => (b.sharedCount - a.sharedCount) || (b.also.length - a.also.length))
+      .slice(0, limit);
+  },
+  recordConnection(viewerId, targetId, status) {
+    targetId = Number(targetId);
+    if (viewerId === targetId || !module.exports.userById(targetId)) return false;
+    const c = data.connections.find(x => x.from_user === viewerId && x.to_user === targetId);
+    if (c) c.status = status; else data.connections.push({ id: ++data.seq.connections, from_user: viewerId, to_user: targetId, status, created_at: Date.now() });
+    persist(); return true;
+  },
+  matchesList(viewerId) {
+    return data.connections.filter(c => c.from_user === viewerId && c.status === 'connected')
+      .sort((a, b) => b.created_at - a.created_at)
+      .map(c => { const u = module.exports.userById(c.to_user) || {}; const card = userCard(viewerId, u);
+        return { id: u.id, name: u.name, mono: card.mono, tone: u.tone, sharedCount: card.sharedCount, ago: ago(c.created_at) }; });
+  },
+  userProfile(targetId, viewerId) {
+    const u = module.exports.userById(targetId); if (!u) return null;
+    const card = userCard(viewerId, u);
+    const connected = !!data.connections.find(c => c.from_user === viewerId && c.to_user === Number(targetId) && c.status === 'connected');
+    const tribes = module.exports.userTribes(u.id).map(t => ({ slug:t.slug, name:t.name, mono:t.mono, tone:t.tone }));
+    return { ...card, handle:u.handle, city:u.city, tribes, connected };
   },
 };

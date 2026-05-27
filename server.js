@@ -116,6 +116,25 @@ app.post('/api/tribes/:slug/posts', requireAuth, (req, res) => {
   res.json({ post });
 });
 
+// ---- match engine (Phase 3) ----
+app.get('/api/match/candidates', requireAuth, (req, res) => res.json({ candidates: db.matchCandidates(req.user.id) }));
+
+app.post('/api/match/:id/connect', requireAuth, (req, res) => {
+  if (!db.recordConnection(req.user.id, req.params.id, 'connected')) return res.status(404).json({ error: 'user not found' });
+  res.json({ matched: true });
+});
+app.post('/api/match/:id/pass', requireAuth, (req, res) => {
+  db.recordConnection(req.user.id, req.params.id, 'passed');
+  res.json({ ok: true });
+});
+app.get('/api/matches', requireAuth, (req, res) => res.json({ matches: db.matchesList(req.user.id) }));
+
+app.get('/api/users/:id', requireAuth, (req, res) => {
+  const p = db.userProfile(Number(req.params.id), req.user.id);
+  if (!p) return res.status(404).json({ error: 'user not found' });
+  res.json({ profile: p });
+});
+
 app.get('/api/health', (_req, res) => res.json({ ok: true, ts: Date.now() }));
 
 // ---- static front-end ----
