@@ -2,10 +2,14 @@
   "name": "tribes-web",
   "version": "1.0.0",
   "private": true,
-  "description": "Tribes — interest-based social app (static prototype). Ink & Citrus theme.",
+  "description": "Tribes — interest-based social app. Ink & Citrus theme.",
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "bcryptjs": "^2.4.3"
   },
   "engines": {
     "node": ">=18"
