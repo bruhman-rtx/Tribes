@@ -54,6 +54,7 @@ async function frag(id){
   return cache[id];
 }
 async function render(){
+  clearPoll();
   const id = stack[stack.length-1];
   stage.innerHTML = await frag(id);
   await wire(id);
@@ -67,6 +68,17 @@ function goTribe(slug){ STATE.currentTribe = slug; go('07_tribe'); }
 function goProfile(id){ STATE.currentProfile = Number(id); go('10_profile'); }
 function goChat(id){ STATE.currentChat = Number(id); go('13_chat'); }
 function on(sel, fn){ stage.querySelectorAll(sel).forEach(el=>el.addEventListener('click',e=>{e.preventDefault();fn(el,e);})); }
+let pollTimer=null;
+function setPoll(fn, ms){ clearInterval(pollTimer); pollTimer=setInterval(fn, ms); }
+function clearPoll(){ if(pollTimer){ clearInterval(pollTimer); pollTimer=null; } }
+async function updateChatsBadge(){
+  try{ const r=await API.conversations(); const unread=(r?.conversations||[]).some(c=>c.unread);
+    const tab=[...stage.querySelectorAll('.tabbar a')].find(a=>/chats/i.test(a.textContent)); if(!tab) return;
+    let dot=tab.querySelector('.tabdot');
+    if(unread && !dot){ tab.style.position='relative'; dot=document.createElement('span'); dot.className='tabdot dot-unread'; dot.style.cssText='position:absolute;top:7px;right:16px'; tab.appendChild(dot); }
+    else if(!unread && dot){ dot.remove(); }
+  }catch{}
+}
 
 function showErr(msg){ let e=stage.querySelector('.formerr'); if(!e){ const a=stage.querySelector('.btn-primary'); if(!a)return; e=document.createElement('div'); e.className='formerr'; e.style.cssText='color:var(--accent-dark);font-size:13px;text-align:center;margin-top:12px;font-weight:600'; a.insertAdjacentElement('afterend',e);} e.textContent=msg; }
 function clearErr(){ stage.querySelector('.formerr')?.remove(); }
@@ -264,21 +276,26 @@ async function hydrateChats(){
 }
 
 async function hydrateChat(){
-  const id=STATE.currentChat; const c=id?await API.conversation(id).catch(()=>null):null;
-  const sc=stage.querySelector('.scroll'); if(!sc) return;
+  const id=STATE.currentChat; const sc=stage.querySelector('.scroll'); if(!sc) return;
+  const c=id?await API.conversation(id).catch(()=>null):null;
   if(!c){ sc.innerHTML='<div class="muted" style="padding:20px">conversation not found.</div>'; return; }
   const head=stage.querySelector('.topbar > div');
   if(head) head.innerHTML=`<div class="mono xs ${c.other.tone}">${c.other.mono}</div><div style="text-align:left"><div class="nm" style="font-size:14px;line-height:1.1">${esc(c.other.name)}</div><div style="font-size:11px;color:var(--accent-dark)">online</div></div>`;
-  sc.innerHTML=`<div class="daysep">today</div>`+ c.messages.map(m=>`<div class="bubble ${m.mine?'me':'them'}">${esc(m.body)}</div>`).join('');
-  sc.scrollTop=sc.scrollHeight;
+  const bubbles=msgs=>`<div class="daysep">today</div>`+msgs.map(m=>`<div class="bubble ${m.mine?'me':'them'}">${esc(m.body)}</div>`).join('');
+  let lastCount=c.messages.length;
+  sc.innerHTML=bubbles(c.messages); sc.scrollTop=sc.scrollHeight;
   const composeInput=stage.querySelector('.input');
-  if(composeInput){ const inp=document.createElement('input'); inp.id='msgbox'; inp.placeholder='message…';
+  if(composeInput){ const inp=document.createElement('input'); inp.id='msgbox'; inp.placeholder='message…'; inp.autocomplete='off';
     inp.style.cssText='flex:1;padding:11px 16px;border-radius:999px;border:1.5px solid var(--ink);background:var(--surface);outline:none;font-size:15px;font-family:inherit;color:var(--ink)';
     composeInput.replaceWith(inp); }
   const btns=stage.querySelectorAll('.icon-btn'); const send=btns[btns.length-1];
-  const doSend=async ()=>{ const mb=document.getElementById('msgbox'); const v=(mb?.value||'').trim(); if(!v)return; mb.value=''; try{ await API.sendMessage(id,v); }catch{} await hydrateChat(); };
+  const doSend=async ()=>{ const mb=document.getElementById('msgbox'); const v=(mb?.value||'').trim(); if(!v)return; mb.value='';
+    sc.insertAdjacentHTML('beforeend',`<div class="bubble me">${esc(v)}</div>`); sc.scrollTop=sc.scrollHeight; lastCount++;
+    try{ await API.sendMessage(id,v); }catch{} };
   send && send.addEventListener('click', doSend);
-  const mb=document.getElementById('msgbox'); if(mb){ mb.addEventListener('keydown',e=>{ if(e.key==='Enter'){e.preventDefault();doSend();} }); }
+  const mb=document.getElementById('msgbox'); if(mb) mb.addEventListener('keydown',e=>{ if(e.key==='Enter'){e.preventDefault();doSend();} });
+  setPoll(async ()=>{ if(stack[stack.length-1]!=='13_chat') return; const r=await API.conversation(id).catch(()=>null); if(!r) return;
+    if(r.messages.length!==lastCount){ lastCount=r.messages.length; sc.innerHTML=bubbles(r.messages); sc.scrollTop=sc.scrollHeight; } }, 3000);
 }
 
 async function hydrateNotifications(){
@@ -292,6 +309,7 @@ async function hydrateNotifications(){
 // ---------- wiring ----------
 async function wire(id){
   stage.querySelectorAll('.tabbar a').forEach(a=>{ const key=(a.textContent||'').trim().toLowerCase(); a.addEventListener('click',e=>{e.preventDefault(); if(TAB[key]) tab(key);}); });
+  if(stage.querySelector('.tabbar')) updateChatsBadge();
   on('.back', back);
   switch(id){
     case '01_welcome': on('.btn-primary',()=>go('02_signup')); on('.alt a',()=>go('03_signin')); break;

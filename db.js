@@ -140,6 +140,14 @@ function seedOpener(conv, fromId, viewerId) {
   const body = shared.length ? `hey! saw we're both into ${shared[0]} — how'd you get into it?` : `hey! we just matched — what have you been into lately?`;
   data.messages.push({ id: ++data.seq.messages, conversation_id: conv.id, sender_id: fromId, body, created_at: Date.now() - 60000, read_at: null });
 }
+// a seed user replies a few seconds after you message them (makes chat feel live + demoes polling)
+function scheduleReply(convId, fromId) {
+  setTimeout(() => { try {
+    const lines = ["nice — we should do a saturday run sometime.", "ha, love that. what first got you into it?", "oh same! we should swap recs.", "that's the dream honestly.", "100%. you around this weekend?", "let's make it happen soon."];
+    data.messages.push({ id: ++data.seq.messages, conversation_id: convId, sender_id: fromId, body: lines[Math.floor(Math.random()*lines.length)], created_at: Date.now(), read_at: null });
+    persist();
+  } catch {} }, 2500 + Math.floor(Math.random() * 2500));
+}
 
 module.exports = {
   raw: data, CATALOG, publicUser, persistNow, ago,
@@ -239,7 +247,10 @@ module.exports = {
     if (!module.exports.userById(otherId)) return null;
     const conv = getOrCreateConv(viewerId, otherId);
     const m = { id: ++data.seq.messages, conversation_id: conv.id, sender_id: viewerId, body: String(body).slice(0, 2000), created_at: Date.now(), read_at: Date.now() };
-    data.messages.push(m); persist();
+    data.messages.push(m);
+    const other = module.exports.userById(otherId);
+    if (other && other.seed) scheduleReply(conv.id, otherId);
+    persist();
     return { id:m.id, body:m.body, mine:true, ago: ago(m.created_at) };
   },
   listConversations(viewerId) {

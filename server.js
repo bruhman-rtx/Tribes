@@ -5,6 +5,7 @@ const bcrypt = require('bcryptjs');
 const db = require('./db');
 
 const app = express();
+app.set('trust proxy', 1); // Railway terminates TLS; trust x-forwarded-* so req.secure is correct
 const PORT = process.env.PORT || 8077;
 const HOST = '0.0.0.0';
 app.use(express.json());
@@ -18,8 +19,9 @@ function parseCookies(req) {
   });
   return out;
 }
-function setSession(res, token) {
-  res.setHeader('Set-Cookie', `sid=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${60 * 60 * 24 * 30}`);
+function setSession(req, res, token) {
+  const secure = req.secure ? '; Secure' : '';
+  res.setHeader('Set-Cookie', `sid=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${60 * 60 * 24 * 30}${secure}`);
 }
 function clearSession(res) {
   res.setHeader('Set-Cookie', 'sid=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0');
@@ -43,7 +45,7 @@ app.post('/api/auth/signup', async (req, res) => {
   if (db.userByEmail(email)) return res.status(409).json({ error: 'that email is already registered' });
   const password_hash = await bcrypt.hash(password, 10);
   const user = db.createUser({ name: String(name).trim(), email, password_hash, city });
-  setSession(res, db.createSession(user.id));
+  setSession(req, res, db.createSession(user.id));
   res.json({ user: db.publicUser(user), interests: [] });
 });
 
@@ -52,7 +54,7 @@ app.post('/api/auth/signin', async (req, res) => {
   const user = db.userByEmail(email || '');
   if (!user || !(await bcrypt.compare(password || '', user.password_hash)))
     return res.status(401).json({ error: 'wrong email or password' });
-  setSession(res, db.createSession(user.id));
+  setSession(req, res, db.createSession(user.id));
   res.json({ user: db.publicUser(user), interests: db.userInterestNames(user.id) });
 });
 
@@ -157,3 +159,6 @@ app.get('/api/health', (_req, res) => res.json({ ok: true, ts: Date.now() }));
 app.use(express.static(path.join(__dirname, 'app'), { extensions: [] }));
 
 app.listen(PORT, HOST, () => console.log(`tribes server listening on http://${HOST}:${PORT}`));
+
+// flush the debounced store on shutdown so a redeploy doesn't lose the last write
+['SIGTERM', 'SIGINT'].forEach(sig => process.on(sig, () => { try { db.persistNow(); } catch {} process.exit(0); }));
