@@ -124,6 +124,22 @@ function userCard(viewerId, u) {
   return { id:u.id, name:u.name, age:u.age, tone:u.tone, mono:(u.name||'?')[0].toLowerCase(),
     km: distanceKm(u.id), bio:u.bio, shared, also, sharedCount: shared.length };
 }
+// ---- messaging helpers (Phase 4) ----
+const actorOf = (u) => ({ id:u.id, name:u.name, mono:(u.name||'?')[0].toLowerCase(), tone:u.tone });
+const convKey = (a, b) => a < b ? [a, b] : [b, a];
+function getOrCreateConv(aId, bId) {
+  const [lo, hi] = convKey(aId, bId);
+  let c = data.conversations.find(x => x.user_a === lo && x.user_b === hi);
+  if (!c) { c = { id: ++data.seq.conversations, user_a: lo, user_b: hi, created_at: Date.now() }; data.conversations.push(c); }
+  return c;
+}
+function seedOpener(conv, fromId, viewerId) {
+  if (data.messages.some(m => m.conversation_id === conv.id)) return;
+  const u = module.exports.userById(fromId); if (!u || !u.seed) return;
+  const shared = userCard(viewerId, u).shared;
+  const body = shared.length ? `hey! saw we're both into ${shared[0]} — how'd you get into it?` : `hey! we just matched — what have you been into lately?`;
+  data.messages.push({ id: ++data.seq.messages, conversation_id: conv.id, sender_id: fromId, body, created_at: Date.now() - 60000, read_at: null });
+}
 
 module.exports = {
   raw: data, CATALOG, publicUser, persistNow, ago,
@@ -189,6 +205,7 @@ module.exports = {
     if (viewerId === targetId || !module.exports.userById(targetId)) return false;
     const c = data.connections.find(x => x.from_user === viewerId && x.to_user === targetId);
     if (c) c.status = status; else data.connections.push({ id: ++data.seq.connections, from_user: viewerId, to_user: targetId, status, created_at: Date.now() });
+    if (status === 'connected') { const conv = getOrCreateConv(viewerId, targetId); seedOpener(conv, targetId, viewerId); }
     persist(); return true;
   },
   matchesList(viewerId) {
@@ -203,5 +220,53 @@ module.exports = {
     const connected = !!data.connections.find(c => c.from_user === viewerId && c.to_user === Number(targetId) && c.status === 'connected');
     const tribes = module.exports.userTribes(u.id).map(t => ({ slug:t.slug, name:t.name, mono:t.mono, tone:t.tone }));
     return { ...card, handle:u.handle, city:u.city, tribes, connected };
+  },
+
+  // ---- messaging (Phase 4) ----
+  conversationWith(viewerId, otherId) {
+    otherId = Number(otherId);
+    const u = module.exports.userById(otherId); if (!u) return null;
+    const conv = getOrCreateConv(viewerId, otherId);
+    seedOpener(conv, otherId, viewerId);
+    data.messages.filter(m => m.conversation_id === conv.id && m.sender_id !== viewerId && !m.read_at).forEach(m => m.read_at = Date.now());
+    persist();
+    return { other: { id:u.id, name:u.name, mono:(u.name||'?')[0].toLowerCase(), tone:u.tone, handle:u.handle },
+      messages: data.messages.filter(m => m.conversation_id === conv.id).sort((a,b)=>a.created_at-b.created_at)
+        .map(m => ({ id:m.id, body:m.body, mine: m.sender_id === viewerId, ago: ago(m.created_at) })) };
+  },
+  sendMessage(viewerId, otherId, body) {
+    otherId = Number(otherId);
+    if (!module.exports.userById(otherId)) return null;
+    const conv = getOrCreateConv(viewerId, otherId);
+    const m = { id: ++data.seq.messages, conversation_id: conv.id, sender_id: viewerId, body: String(body).slice(0, 2000), created_at: Date.now(), read_at: Date.now() };
+    data.messages.push(m); persist();
+    return { id:m.id, body:m.body, mine:true, ago: ago(m.created_at) };
+  },
+  listConversations(viewerId) {
+    return data.conversations.filter(c => c.user_a === viewerId || c.user_b === viewerId).map(c => {
+      const otherId = c.user_a === viewerId ? c.user_b : c.user_a;
+      const u = module.exports.userById(otherId); if (!u) return null;
+      const msgs = data.messages.filter(m => m.conversation_id === c.id).sort((a,b)=>b.created_at-a.created_at);
+      if (!msgs.length) return null;
+      const last = msgs[0];
+      return { id:u.id, name:u.name, mono:(u.name||'?')[0].toLowerCase(), tone:u.tone,
+        preview: (last.sender_id === viewerId ? 'you: ' : '') + last.body, ago: ago(last.created_at), ts: last.created_at,
+        unread: msgs.some(m => m.sender_id !== viewerId && !m.read_at) };
+    }).filter(Boolean).sort((a,b)=>b.ts-a.ts);
+  },
+  notifications(viewerId) {
+    const out = [];
+    data.connections.filter(c => c.from_user === viewerId && c.status === 'connected').forEach(c => {
+      const u = module.exports.userById(c.to_user); if (!u) return;
+      const card = userCard(viewerId, u);
+      out.push({ type:'match', actor: actorOf(u), text: `new match — ${u.name}. you share ${card.sharedCount} interest${card.sharedCount===1?'':'s'}.`, ts: c.created_at, unread: false });
+    });
+    const myConvs = new Set(data.conversations.filter(c => c.user_a === viewerId || c.user_b === viewerId).map(c => c.id));
+    const bySender = {};
+    data.messages.filter(m => myConvs.has(m.conversation_id) && m.sender_id !== viewerId && !m.read_at)
+      .forEach(m => { if (!bySender[m.sender_id] || m.created_at > bySender[m.sender_id].created_at) bySender[m.sender_id] = m; });
+    for (const sid in bySender) { const u = module.exports.userById(Number(sid)); if (!u) continue;
+      out.push({ type:'message', actor: actorOf(u), text: `${u.name} sent you a message.`, ts: bySender[sid].created_at, unread: true }); }
+    return out.sort((a,b)=>b.ts-a.ts).map(n => ({ ...n, ago: ago(n.ts) })).slice(0, 30);
   },
 };

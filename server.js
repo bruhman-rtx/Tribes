@@ -135,6 +135,22 @@ app.get('/api/users/:id', requireAuth, (req, res) => {
   res.json({ profile: p });
 });
 
+// ---- messaging + activity (Phase 4) ----
+app.get('/api/conversations', requireAuth, (req, res) => res.json({ conversations: db.listConversations(req.user.id) }));
+app.get('/api/conversations/:userId', requireAuth, (req, res) => {
+  const c = db.conversationWith(req.user.id, req.params.userId);
+  if (!c) return res.status(404).json({ error: 'user not found' });
+  res.json(c);
+});
+app.post('/api/conversations/:userId/messages', requireAuth, (req, res) => {
+  const body = (req.body && req.body.body || '').trim();
+  if (!body) return res.status(400).json({ error: 'message body required' });
+  const m = db.sendMessage(req.user.id, req.params.userId, body);
+  if (!m) return res.status(404).json({ error: 'user not found' });
+  res.json({ message: m });
+});
+app.get('/api/notifications', requireAuth, (req, res) => res.json({ notifications: db.notifications(req.user.id) }));
+
 app.get('/api/health', (_req, res) => res.json({ ok: true, ts: Date.now() }));
 
 // ---- static front-end ----

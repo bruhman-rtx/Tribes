@@ -37,8 +37,12 @@ const API = {
   userProfile:(id)=>getJSON('/api/users/'+id),
   connect:(id)=>post('/api/match/'+id+'/connect',{}),
   pass:(id)=>post('/api/match/'+id+'/pass',{}),
+  conversations:()=>getJSON('/api/conversations'),
+  conversation:(id)=>getJSON('/api/conversations/'+id),
+  sendMessage:(id,body)=>post('/api/conversations/'+id+'/messages',{body}),
+  notifications:()=>getJSON('/api/notifications'),
 };
-const STATE = { user:null, interests:[], interestIds:[], catalog:null, selected:new Set(), currentTribe:null, currentProfile:null, matchQueue:null, matchIdx:0 };
+const STATE = { user:null, interests:[], interestIds:[], catalog:null, selected:new Set(), currentTribe:null, currentProfile:null, currentChat:null, matchQueue:null, matchIdx:0 };
 
 const esc = (s)=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const num = (n)=>Number(n).toLocaleString();
@@ -61,6 +65,7 @@ function tab(key){ stack=[TAB[key]]; render(); }
 function enterApp(){ stack=['05_discover']; render(); }
 function goTribe(slug){ STATE.currentTribe = slug; go('07_tribe'); }
 function goProfile(id){ STATE.currentProfile = Number(id); go('10_profile'); }
+function goChat(id){ STATE.currentChat = Number(id); go('13_chat'); }
 function on(sel, fn){ stage.querySelectorAll(sel).forEach(el=>el.addEventListener('click',e=>{e.preventDefault();fn(el,e);})); }
 
 function showErr(msg){ let e=stage.querySelector('.formerr'); if(!e){ const a=stage.querySelector('.btn-primary'); if(!a)return; e=document.createElement('div'); e.className='formerr'; e.style.cssText='color:var(--accent-dark);font-size:13px;text-align:center;margin-top:12px;font-weight:600'; a.insertAdjacentElement('afterend',e);} e.textContent=msg; }
@@ -225,7 +230,7 @@ async function hydrateMatches(){
   sc.innerHTML = list.length
     ? `<div class="sec" style="margin-top:4px"><h2>new — say hi</h2></div><div style="display:flex;gap:16px;overflow:hidden">${list.slice(0,5).map(mono).join('')}</div><div class="sec"><h2>all matches</h2><span class="muted" style="font-size:13px">${list.length}</span></div>${list.map(row).join('')}`
     : `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:80%;text-align:center;gap:10px;padding:30px"><div class="h-lg">no matches yet</div><div class="muted" style="font-size:14px;line-height:1.5">go to match and connect with people who share your interests.</div></div>`;
-  sc.querySelectorAll('[data-uid]').forEach(el=>el.addEventListener('click',()=>goProfile(el.dataset.uid)));
+  sc.querySelectorAll('[data-uid]').forEach(el=>el.addEventListener('click',()=>goChat(el.dataset.uid)));
 }
 
 async function hydrateProfile(){
@@ -245,7 +250,43 @@ async function hydrateProfile(){
     if(p.connected) setConnected();
     connectBtn.addEventListener('click', async ()=>{ if(connectBtn.classList.contains('btn-soft'))return; await API.connect(p.id).catch(()=>{}); setConnected(); });
   }
-  on('.btn-ghost', ()=>go('13_chat'));
+  on('.btn-ghost', ()=>goChat(p.id));
+}
+
+// ---------- hydration: messaging (Phase 4) ----------
+async function hydrateChats(){
+  const sc=stage.querySelector('.scroll'); if(!sc) return;
+  const r=await API.conversations().catch(()=>null); const list=r?.conversations||[];
+  const row=c=>`<div class="row" data-uid="${c.id}"><div class="mono s ${c.tone}">${c.mono}</div><div class="grow"><div class="nm">${esc(c.name)}</div><div class="sub">${esc(c.preview)}</div></div><div style="text-align:right;flex:none"><div class="sub" style="margin:0">${c.ago}</div>${c.unread?'<span class="dot-unread" style="margin-top:6px;margin-left:auto"></span>':''}</div></div>`;
+  sc.innerHTML = `<div class="search"><i class="ph ph-magnifying-glass"></i>search chats</div>` +
+    (list.length ? `<div style="margin-top:8px">${list.map(row).join('')}</div>` : `<div class="muted" style="font-size:14px;padding:28px 4px;text-align:center;line-height:1.5">no chats yet — connect with a match and say hi.</div>`);
+  sc.querySelectorAll('[data-uid]').forEach(el=>el.addEventListener('click',()=>goChat(el.dataset.uid)));
+}
+
+async function hydrateChat(){
+  const id=STATE.currentChat; const c=id?await API.conversation(id).catch(()=>null):null;
+  const sc=stage.querySelector('.scroll'); if(!sc) return;
+  if(!c){ sc.innerHTML='<div class="muted" style="padding:20px">conversation not found.</div>'; return; }
+  const head=stage.querySelector('.topbar > div');
+  if(head) head.innerHTML=`<div class="mono xs ${c.other.tone}">${c.other.mono}</div><div style="text-align:left"><div class="nm" style="font-size:14px;line-height:1.1">${esc(c.other.name)}</div><div style="font-size:11px;color:var(--accent-dark)">online</div></div>`;
+  sc.innerHTML=`<div class="daysep">today</div>`+ c.messages.map(m=>`<div class="bubble ${m.mine?'me':'them'}">${esc(m.body)}</div>`).join('');
+  sc.scrollTop=sc.scrollHeight;
+  const composeInput=stage.querySelector('.input');
+  if(composeInput){ const inp=document.createElement('input'); inp.id='msgbox'; inp.placeholder='message…';
+    inp.style.cssText='flex:1;padding:11px 16px;border-radius:999px;border:1.5px solid var(--ink);background:var(--surface);outline:none;font-size:15px;font-family:inherit;color:var(--ink)';
+    composeInput.replaceWith(inp); }
+  const btns=stage.querySelectorAll('.icon-btn'); const send=btns[btns.length-1];
+  const doSend=async ()=>{ const mb=document.getElementById('msgbox'); const v=(mb?.value||'').trim(); if(!v)return; mb.value=''; try{ await API.sendMessage(id,v); }catch{} await hydrateChat(); };
+  send && send.addEventListener('click', doSend);
+  const mb=document.getElementById('msgbox'); if(mb){ mb.addEventListener('keydown',e=>{ if(e.key==='Enter'){e.preventDefault();doSend();} }); }
+}
+
+async function hydrateNotifications(){
+  const sc=stage.querySelector('.scroll'); if(!sc) return;
+  const r=await API.notifications().catch(()=>null); const list=r?.notifications||[];
+  const row=n=>`<div class="row" data-uid="${n.actor.id}" data-type="${n.type}"><div class="mono s ${n.actor.tone}">${n.actor.mono}</div><div class="grow" style="white-space:normal"><div style="font-size:14px;line-height:1.4">${esc(n.text)}</div><div class="sub" style="margin-top:3px">${n.ago}</div></div>${n.unread?'<span class="dot-unread"></span>':''}</div>`;
+  sc.innerHTML = list.length ? list.map(row).join('') : `<div class="muted" style="font-size:14px;padding:28px 4px;text-align:center;line-height:1.5">nothing yet — connect with people and the activity shows up here.</div>`;
+  sc.querySelectorAll('[data-uid]').forEach(el=>el.addEventListener('click',()=> el.dataset.type==='message'?goChat(el.dataset.uid):goProfile(el.dataset.uid)));
 }
 
 // ---------- wiring ----------
@@ -272,8 +313,9 @@ async function wire(id){
     case '09_matches': await hydrateMatches(); break;
     case '10_profile': await hydrateProfile(); break;
     case '11_me': await hydrateMe(); break;
-    case '12_chats': on('.row',()=>go('13_chat')); break;
-    case '14_notifications': on('.row',()=>go('10_profile')); break;
+    case '12_chats': await hydrateChats(); break;
+    case '13_chat': await hydrateChat(); break;
+    case '14_notifications': await hydrateNotifications(); break;
     case '15_create': await hydrateCreate(); break;
   }
 }
