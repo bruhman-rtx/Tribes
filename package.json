@@ -4,7 +4,7 @@
   "private": true,
   "description": "Tribes — interest-based social app (static prototype). Ink & Citrus theme.",
   "scripts": {
-    "start": "serve app -l $PORT",
+    "start": "serve app --no-clipboard -l tcp://0.0.0.0:${PORT:-3000}",
     "dev": "serve app -l 8077"
   },
   "dependencies": {
