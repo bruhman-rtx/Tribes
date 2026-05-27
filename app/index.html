@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>tribes</title>
+<script>
+  /* on the live domain, route desktop browsers to the desktop build; localhost dev stays as-is. add ?m=1 to force mobile. */
+  (function(){
+    var local = ['localhost','127.0.0.1'].indexOf(location.hostname) >= 0;
+    var forceMobile = new URLSearchParams(location.search).get('m') === '1';
+    if(!local && !forceMobile && window.matchMedia('(min-width:1024px)').matches){
+      location.replace('desktop.html' + location.hash);
+    }
+  })();
+</script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
+<link rel="stylesheet" href="styles.css">
+<style>
+  /* dev launcher — jump to any screen (review aid, not part of the product) */
+  #fab{position:fixed;right:22px;bottom:22px;width:52px;height:52px;border-radius:14px;border:none;
+    background:#14130F;color:#FF5A1F;font-size:24px;cursor:pointer;z-index:50;box-shadow:0 8px 24px rgba(0,0,0,.3);
+    display:grid;place-items:center;font-family:'Space Grotesk',sans-serif}
+  #launcher{position:fixed;right:22px;bottom:84px;width:240px;background:#14130F;border-radius:14px;padding:10px;
+    z-index:50;display:none;box-shadow:0 12px 40px rgba(0,0,0,.4)}
+  #launcher.open{display:block}
+  #launcher .lh{color:#A39E93;font:600 10px 'Space Grotesk';letter-spacing:.1em;text-transform:uppercase;padding:6px 8px 8px}
+  #launcher a{display:block;color:#FAF8F4;font:500 13px 'Space Grotesk';padding:7px 9px;border-radius:7px;cursor:pointer;text-decoration:none}
+  #launcher a:hover{background:#FF5A1F;color:#fff}
+</style>
+</head>
+<body>
+  <div class="device"><div id="stage"></div></div>
+
+  <button id="fab" title="jump to screen">⌗</button>
+  <nav id="launcher"><div class="lh">jump to screen</div></nav>
+
+  <script src="app.js"></script>
+  <script>
+    // build launcher list from the screen map
+    const ln = document.getElementById('launcher');
+    const labels = {'01_welcome':'01 · welcome','02_signup':'02 · sign up','03_signin':'03 · sign in',
+      '04_pick_interests':'04 · pick interests','05_discover':'05 · discover','06_search':'06 · search',
+      '07_tribe':'07 · tribe page','08_match':'08 · match','09_matches':'09 · matches','10_profile':'10 · profile',
+      '11_me':'11 · me','12_chats':'12 · chats','13_chat':'13 · chat','14_notifications':'14 · notifications','15_create':'15 · create post'};
+    Object.keys(window.TRIBES_FILES).forEach(id=>{
+      const a=document.createElement('a'); a.textContent=labels[id]||id; a.onclick=()=>window.jump(id); ln.appendChild(a);
+    });
+    document.getElementById('fab').onclick=()=>ln.classList.toggle('open');
+  </script>
+</body>
+</html>

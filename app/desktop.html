@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>tribes — desktop</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="desktop.css">
+<style>
+  #fab{position:fixed;right:20px;bottom:20px;width:50px;height:50px;border-radius:13px;border:none;background:#14130F;color:#FF5A1F;font-size:22px;cursor:pointer;z-index:50;box-shadow:0 8px 24px rgba(0,0,0,.3);display:grid;place-items:center;font-family:'Space Grotesk',sans-serif}
+  #launcher{position:fixed;right:20px;bottom:80px;width:230px;background:#14130F;border-radius:13px;padding:10px;z-index:50;display:none;box-shadow:0 12px 40px rgba(0,0,0,.4)}
+  #launcher.open{display:block}
+  #launcher .lh{color:#A39E93;font:600 10px 'Space Grotesk';letter-spacing:.1em;text-transform:uppercase;padding:6px 8px 8px}
+  #launcher a{display:block;color:#FAF8F4;font:500 13px 'Space Grotesk';padding:7px 9px;border-radius:7px;cursor:pointer}
+  #launcher a:hover{background:#FF5A1F;color:#fff}
+</style>
+</head>
+<body>
+  <div id="app"></div>
+  <button id="fab" title="jump to screen">⌗</button>
+  <nav id="launcher"><div class="lh">jump to view</div></nav>
+  <script src="desktop.js"></script>
+  <script>
+    const ln=document.getElementById('launcher');
+    (window.TRIBES_VIEWS||[]).forEach(v=>{const a=document.createElement('a');a.textContent=v;a.onclick=()=>window.jump(v);ln.appendChild(a);});
+    document.getElementById('fab').onclick=()=>ln.classList.toggle('open');
+  </script>
+</body>
+</html>

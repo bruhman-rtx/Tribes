@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Tribes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+<link href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css" rel="stylesheet" />
+<link href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/fill/style.css" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+<script>
+  // Apply saved theme + sidebar state before paint to prevent flash.
+  (function () {
+    var t = localStorage.getItem("tribes-theme");
+    if (t === "dark" || t === "light") document.documentElement.setAttribute("data-theme", t);
+    var s = localStorage.getItem("tribes-sidebar");
+    if (s === "collapsed") document.documentElement.setAttribute("data-sidebar", "collapsed");
+  })();
+</script>
+</head>
+<body>
+
+<div id="app" class="shell">
+
+  <!-- LEFT SIDEBAR (flush) -->
+  <aside class="sidebar">
+    <div class="sidebar-top">
+      <div class="sidebar-brand" data-nav="discover">
+        <span class="brand-dot"></span>
+        <span class="brand-name">Tribes</span>
+      </div>
+      <button class="sidebar-collapse" id="sidebar-collapse" type="button" title="Collapse sidebar">
+        <i class="ph ph-sidebar-simple"></i>
+      </button>
+    </div>
+
+    <nav class="sidebar-nav">
+      <button class="sidebar-btn active" data-nav="discover">
+        <i class="ph ph-house"></i><span>Home</span>
+      </button>
+      <button class="sidebar-btn" data-nav="search">
+        <i class="ph ph-magnifying-glass"></i><span>Search</span>
+        <kbd class="side-kbd">⌘K</kbd>
+      </button>
+      <button class="sidebar-btn" data-nav="explore">
+        <i class="ph ph-compass"></i><span>Explore</span>
+      </button>
+      <button class="sidebar-btn" data-nav="swipe">
+        <i class="ph ph-cards"></i><span>Swipe</span>
+      </button>
+      <button class="sidebar-btn" data-nav="dms">
+        <i class="ph ph-chat-circle"></i><span>Messages</span>
+        <span class="dm-dot" id="dm-dot"></span>
+      </button>
+      <button class="sidebar-btn" data-nav="notifications">
+        <i class="ph ph-bell"></i><span>Notifications</span>
+      </button>
+    </nav>
+
+    <div class="sidebar-footer">
+      <button class="sidebar-btn" data-nav="me">
+        <span class="monogram monogram-xs" id="sb-me-mono">N</span>
+        <span>Profile</span>
+      </button>
+      <button class="sidebar-btn theme-toggle" id="theme-toggle" type="button" title="Toggle theme">
+        <i class="ph ph-moon" id="theme-icon"></i>
+        <span id="theme-label">Dark</span>
+      </button>
+      <button class="sidebar-btn create-cta" data-nav="create">
+        <i class="ph ph-plus"></i><span>New Post</span>
+      </button>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="page">
+
+    <!-- HOME -->
+    <section class="view active" id="view-discover">
+
+      <header class="dash-head">
+        <div>
+          <span class="eyebrow">Welcome back</span>
+          <h1 id="dash-greeting">Hey, Neil.</h1>
+        </div>
+        <span class="dash-date" id="dash-date"></span>
+      </header>
+
+      <div class="bento">
+
+        <!-- Spotlight (big hero) -->
+        <article class="tile tile-spotlight" id="tile-spotlight">
+          <div class="tile-label">Spotlight</div>
+          <div id="spotlight-content"></div>
+        </article>
+
+        <!-- Your Tribes -->
+        <article class="tile tile-tribes">
+          <div class="tile-head">
+            <span class="tile-title">Your Tribes</span>
+            <button class="tile-link" data-nav="explore">All</button>
+          </div>
+          <div id="tile-tribes"></div>
+        </article>
+
+        <!-- Up Next (swipe) -->
+        <article class="tile tile-swipe" data-nav="swipe">
+          <div class="tile-head">
+            <span class="tile-title">Up Next</span>
+            <i class="ph ph-arrow-up-right tile-go"></i>
+          </div>
+          <div id="tile-swipe"></div>
+        </article>
+
+        <!-- Online Now -->
+        <article class="tile tile-pulse">
+          <div class="tile-head">
+            <span class="tile-title"><span class="live-dot"></span>Online</span>
+            <span class="tile-meta" id="online-count"></span>
+          </div>
+          <div id="tile-pulse"></div>
+        </article>
+
+        <!-- Messages -->
+        <article class="tile tile-dms" data-nav="dms">
+          <div class="tile-head">
+            <span class="tile-title">Messages</span>
+            <i class="ph ph-arrow-up-right tile-go"></i>
+          </div>
+          <div id="tile-dms"></div>
+        </article>
+
+      </div>
+    </section>
+
+    <!-- SEARCH -->
+    <section class="view" id="view-search">
+      <header class="panel-head"><h1>Search</h1></header>
+      <div class="search-bar">
+        <i class="ph ph-magnifying-glass"></i>
+        <input type="text" id="search-input" placeholder="Search tribes or people" />
+        <button class="btn-ghost-sm" id="search-clear">Clear</button>
+      </div>
+      <div class="filters">
+        <div class="filter-group"><span class="filter-label">Vibe</span><div class="chips" id="filter-vibes"></div></div>
+        <div class="filter-group"><span class="filter-label">Age</span><div class="chips" id="filter-ages"></div></div>
+        <div class="filter-group"><span class="filter-label">Where</span><div class="chips" id="filter-locs"></div></div>
+      </div>
+      <div class="tabs">
+        <button class="tab active" data-tab="tribes">Tribes</button>
+        <button class="tab" data-tab="people">People</button>
+      </div>
+      <div class="tab-panel" id="panel-tribes">
+        <div class="cat-list" id="search-cat-grid"></div>
+        <div class="empty" id="search-cat-empty" hidden>No tribes match. Try fewer filters.</div>
+      </div>
+      <div class="tab-panel" id="panel-people" hidden>
+        <div class="people-list" id="search-people-grid"></div>
+        <div class="empty" id="search-people-empty" hidden>No one here yet.</div>
+      </div>
+    </section>
+
+    <!-- EXPLORE -->
+    <section class="view" id="view-explore">
+      <header class="panel-head">
+        <h1>Explore</h1>
+        <p class="lede">All tribes. Find your people.</p>
+      </header>
+      <div class="cat-list" id="explore-grid"></div>
+    </section>
+
+    <!-- CATEGORY -->
+    <section class="view" id="view-category">
+      <button class="back-btn" data-nav="back"><i class="ph ph-arrow-left"></i> Back</button>
+      <header class="cat-hero" id="cat-hero"></header>
+      <div class="tabs">
+        <button class="tab active" data-cat-tab="members">Members</button>
+        <button class="tab" data-cat-tab="posts">Posts</button>
+        <button class="tab" data-cat-tab="about">About</button>
+      </div>
+      <div class="cat-panel" id="cat-members"></div>
+      <div class="cat-panel" id="cat-posts" hidden></div>
+      <div class="cat-panel" id="cat-about" hidden></div>
+    </section>
+
+    <!-- PROFILE -->
+    <section class="view" id="view-profile">
+      <button class="back-btn" data-nav="back"><i class="ph ph-arrow-left"></i> Back</button>
+      <div class="profile" id="profile-body"></div>
+    </section>
+
+    <!-- SWIPE -->
+    <section class="view" id="view-swipe">
+      <header class="panel-head centered">
+        <span class="eyebrow">Discover People</span>
+        <h1>Meet someone new</h1>
+        <p class="lede">Use ← / → to pass or connect.</p>
+      </header>
+      <div class="swipe-stage" id="swipe-stage"></div>
+      <div class="swipe-actions">
+        <button class="btn-ghost" id="swipe-pass"><i class="ph ph-x"></i> Pass</button>
+        <button class="btn-primary" id="swipe-like"><i class="ph ph-heart"></i> Connect</button>
+      </div>
+      <div class="swipe-hint" id="swipe-progress"></div>
+    </section>
+
+    <!-- DMs -->
+    <section class="view" id="view-dms">
+      <div class="dm-layout">
+        <aside class="dm-sidebar">
+          <div class="dm-sidebar-head">
+            <span class="eyebrow">Messages</span>
+            <button class="icon-btn" title="New message"><i class="ph ph-pencil-simple"></i></button>
+          </div>
+          <div class="dm-search">
+            <i class="ph ph-magnifying-glass"></i>
+            <input type="text" placeholder="Search conversations" />
+          </div>
+          <div class="dm-list" id="dm-list"></div>
+        </aside>
+        <main class="dm-thread" id="dm-thread">
+          <div class="dm-placeholder">
+            <i class="ph ph-chat-circle"></i>
+            <p>Pick a conversation</p>
+          </div>
+        </main>
+      </div>
+    </section>
+
+    <!-- ME -->
+    <section class="view" id="view-me">
+      <div class="profile" id="me-body"></div>
+    </section>
+
+    <!-- NOTIFICATIONS -->
+    <section class="view" id="view-notifications">
+      <header class="panel-head"><h1>Notifications</h1></header>
+      <div class="notif-list" id="notif-list"></div>
+    </section>
+
+    <!-- CREATE -->
+    <section class="view" id="view-create">
+      <header class="panel-head">
+        <h1>Create</h1>
+        <p class="lede">Share something with your tribes.</p>
+      </header>
+      <div class="create-card">
+        <div class="create-row">
+          <div class="monogram monogram-sm" id="create-mono">N</div>
+          <textarea id="create-text" placeholder="What's on your mind?" rows="4"></textarea>
+        </div>
+        <div class="create-foot">
+          <div class="create-tools">
+            <button class="icon-btn" title="Image"><i class="ph ph-image"></i></button>
+            <button class="icon-btn" title="Link"><i class="ph ph-link"></i></button>
+            <button class="icon-btn" title="Poll"><i class="ph ph-chart-bar"></i></button>
+          </div>
+          <button class="btn-primary">Post</button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

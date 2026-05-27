@@ -1,0 +1,16 @@
+{
+  "name": "tribes-web",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Tribes — interest-based social app (static prototype). Ink & Citrus theme.",
+  "scripts": {
+    "start": "serve app -l $PORT",
+    "dev": "serve app -l 8077"
+  },
+  "dependencies": {
+    "serve": "^14.2.4"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
