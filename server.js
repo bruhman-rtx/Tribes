@@ -82,6 +82,40 @@ app.post('/api/me/interests', requireAuth, (req, res) => {
   res.json({ interests: db.userInterestNames(req.user.id), interestIds: db.userInterestIds(req.user.id) });
 });
 
+// ---- tribes (Phase 2) ----
+app.get('/api/tribes', (req, res) => res.json({ tribes: db.listTribes(req.user && req.user.id) }));
+
+app.get('/api/discover', requireAuth, (req, res) => {
+  const d = db.discover(req.user.id);
+  res.json({ user: db.publicUser(req.user), ...d });
+});
+
+app.get('/api/me/tribes', requireAuth, (req, res) => res.json({ tribes: db.userTribes(req.user.id) }));
+
+app.get('/api/tribes/:slug', (req, res) => {
+  const t = db.tribeBySlug(req.params.slug, req.user && req.user.id);
+  if (!t) return res.status(404).json({ error: 'tribe not found' });
+  res.json({ tribe: t });
+});
+
+app.post('/api/tribes/:slug/join', requireAuth, (req, res) => {
+  if (!db.joinTribe(req.user.id, req.params.slug)) return res.status(404).json({ error: 'tribe not found' });
+  res.json({ tribe: db.tribeBySlug(req.params.slug, req.user.id) });
+});
+
+app.post('/api/tribes/:slug/leave', requireAuth, (req, res) => {
+  if (!db.leaveTribe(req.user.id, req.params.slug)) return res.status(404).json({ error: 'tribe not found' });
+  res.json({ tribe: db.tribeBySlug(req.params.slug, req.user.id) });
+});
+
+app.post('/api/tribes/:slug/posts', requireAuth, (req, res) => {
+  const body = (req.body && req.body.body || '').trim();
+  if (!body) return res.status(400).json({ error: 'post body required' });
+  const post = db.createPost(req.user.id, req.params.slug, body);
+  if (!post) return res.status(404).json({ error: 'tribe not found' });
+  res.json({ post });
+});
+
 app.get('/api/health', (_req, res) => res.json({ ok: true, ts: Date.now() }));
 
 // ---- static front-end ----
