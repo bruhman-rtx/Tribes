@@ -17,7 +17,7 @@ function rateLimit(tag, max, windowMs) {
     const key = tag + ':' + (req.ip || '?');
     const now = Date.now();
     const arr = (rlHits.get(key) || []).filter(t => now - t < windowMs);
-    if (arr.length >= max) return res.status(429).json({ error: 'too many requests — slow down a moment' });
+    if (arr.length >= max) return res.status(429).json({ error: 'Too many requests — slow down a moment' });
     arr.push(now); rlHits.set(key, arr); next();
   };
 }
@@ -55,10 +55,10 @@ const emailRe = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 // ---- auth ----
 app.post('/api/auth/signup', authLimiter, async (req, res) => {
   const { name, email, password, city } = req.body || {};
-  if (!name || !String(name).trim()) return res.status(400).json({ error: 'name required' });
-  if (!emailRe.test(email || '')) return res.status(400).json({ error: 'valid email required' });
-  if (!password || password.length < 8) return res.status(400).json({ error: 'password must be at least 8 characters' });
-  if (db.userByEmail(email)) return res.status(409).json({ error: 'that email is already registered' });
+  if (!name || !String(name).trim()) return res.status(400).json({ error: 'Name required' });
+  if (!emailRe.test(email || '')) return res.status(400).json({ error: 'Valid email required' });
+  if (!password || password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
+  if (db.userByEmail(email)) return res.status(409).json({ error: 'That email is already registered' });
   const password_hash = await bcrypt.hash(password, 10);
   const user = db.createUser({ name: String(name).trim(), email, password_hash, city });
   setSession(req, res, db.createSession(user.id));
@@ -69,7 +69,7 @@ app.post('/api/auth/signin', authLimiter, async (req, res) => {
   const { email, password } = req.body || {};
   const user = db.userByEmail(email || '');
   if (!user || !(await bcrypt.compare(password || '', user.password_hash)))
-    return res.status(401).json({ error: 'wrong email or password' });
+    return res.status(401).json({ error: 'Wrong email or password' });
   setSession(req, res, db.createSession(user.id));
   res.json({ user: db.publicUser(user), interests: db.userInterestNames(user.id) });
 });

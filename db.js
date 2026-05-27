@@ -8,11 +8,11 @@ fs.mkdirSync(DIR, { recursive: true });
 const FILE = path.join(DIR, 'tribes.json');
 
 const CATALOG = {
-  creative: ['film photography','ceramics','typography','illustration','vinyl','poetry','printmaking','sketching'],
-  movement: ['trail running','bouldering','yoga','cycling','surfing','climbing','swimming'],
-  sound: ['jazz','techno','lo-fi beats','indie','classical','hip hop','ambient'],
-  play: ['indie games','tabletop','chess','board game cafes','puzzles'],
-  taste: ['cold brew','natural wine','ramen','baking','street food','tea'],
+  creative: ['Film Photography','Ceramics','Typography','Illustration','Vinyl','Poetry','Printmaking','Sketching'],
+  movement: ['Trail Running','Bouldering','Yoga','Cycling','Surfing','Climbing','Swimming'],
+  sound: ['Jazz','Techno','Lo-fi Beats','Indie','Classical','Hip Hop','Ambient'],
+  play: ['Indie Games','Tabletop','Chess','Board Game Cafes','Puzzles'],
+  taste: ['Cold Brew','Natural Wine','Ramen','Baking','Street Food','Tea'],
 };
 
 function blank() {
@@ -47,12 +47,12 @@ if (data.tribes.length === 0) seedWorld();
 function seedWorld() {
   const now = Date.now();
   const demo = [
-    { key:'rohan', name:'rohan', tone:'t2', age:27, city:'london', bio:'weekend trail addict and slow-coffee evangelist. always chasing the next ridge line.', interests:['trail running','jazz','film photography','cold brew','bouldering'] },
-    { key:'elena', name:'elena', tone:'t1', age:25, city:'london', bio:'shooting film and throwing pots. natural wine on fridays.', interests:['film photography','ceramics','natural wine'] },
-    { key:'kai',   name:'kai',   tone:'t3', age:29, city:'london', bio:'crate-digger. spiritual jazz to dusty techno.', interests:['jazz','vinyl','indie','techno'] },
-    { key:'priya', name:'priya', tone:'t4', age:26, city:'london', bio:'sunrise miles then sourdough. yoga to recover.', interests:['trail running','yoga','baking'] },
-    { key:'noor',  name:'noor',  tone:'t4', age:24, city:'london', bio:'climbing plastic + rock. cold brew to function.', interests:['trail running','cold brew','climbing'] },
-    { key:'dev',   name:'dev',   tone:'t5', age:31, city:'london', bio:'ramen cartographer and indie-game completionist.', interests:['cold brew','ramen','indie games'] },
+    { key:'rohan', name:'Rohan', tone:'t2', age:27, city:'London', bio:'Weekend trail addict and slow-coffee evangelist. Always chasing the next ridge line.', interests:['Trail Running','Jazz','Film Photography','Cold Brew','Bouldering'] },
+    { key:'elena', name:'Elena', tone:'t1', age:25, city:'London', bio:'Shooting film and throwing pots. Natural wine on Fridays.', interests:['Film Photography','Ceramics','Natural Wine'] },
+    { key:'kai',   name:'Kai',   tone:'t3', age:29, city:'London', bio:'Crate-digger. Spiritual jazz to dusty techno.', interests:['Jazz','Vinyl','Indie','Techno'] },
+    { key:'priya', name:'Priya', tone:'t4', age:26, city:'London', bio:'Sunrise miles then sourdough. Yoga to recover.', interests:['Trail Running','Yoga','Baking'] },
+    { key:'noor',  name:'Noor',  tone:'t4', age:24, city:'London', bio:'Climbing plastic + rock. Cold brew to function.', interests:['Trail Running','Cold Brew','Climbing'] },
+    { key:'dev',   name:'Dev',   tone:'t5', age:31, city:'London', bio:'Ramen cartographer and indie-game completionist.', interests:['Cold Brew','Ramen','Indie Games'] },
   ];
   const demoId = {};
   for (const d of demo) {
@@ -62,16 +62,16 @@ function seedWorld() {
     for (const inm of d.interests) { const iid = interestIdByName(inm); if (iid) data.userInterests.push({ user_id: u.id, interest_id: iid }); }
   }
   const tribes = [
-    ['trail-running','trail running','t','t3',1540,64,"for people who'd rather be on a ridge than a treadmill. weekly meetups, route swaps, race chat."],
-    ['film-photography','film photography','f','t1',2210,112,'grain, light leaks and the wait for the lab. share rolls, gear and darkroom wins.'],
-    ['jazz-heads','jazz heads','j','t2',640,15,'from bebop to spiritual. records, gigs and late-night listening.'],
-    ['ceramics','ceramics','c','t4',880,9,'wheel, hand-build, glaze chemistry. show your seconds.'],
-    ['cold-brew-club','cold brew club','c','t4',1204,38,'slow-coffee people. ratios, beans and the best brews in town.'],
-    ['bouldering','bouldering','b','t1',880,21,'projects, beta and chalk everywhere. indoor and outdoor.'],
-    ['indie-games','indie games','i','t5',1320,47,'the weird and the wonderful. devs and players both welcome.'],
-    ['natural-wine','natural wine','w','t4',560,12,'low-intervention, funky, a little cloudy. bottle recs + tastings.'],
-    ['typography','typography','t','t2',990,18,'type that sings. specimens, kerning crimes and font finds.'],
-    ['yoga','yoga','y','t3',1450,55,'breath and movement. studios, home practice and teachers.'],
+    ['trail-running','Trail Running','t','t3',1540,64,"For people who'd rather be on a ridge than a treadmill. Weekly meetups, route swaps, race chat."],
+    ['film-photography','Film Photography','f','t1',2210,112,'Grain, light leaks and the wait for the lab. Share rolls, gear and darkroom wins.'],
+    ['jazz-heads','Jazz Heads','j','t2',640,15,'From bebop to spiritual. Records, gigs and late-night listening.'],
+    ['ceramics','Ceramics','c','t4',880,9,'Wheel, hand-build, glaze chemistry. Show your seconds.'],
+    ['cold-brew-club','Cold Brew Club','c','t4',1204,38,'Slow-coffee people. Ratios, beans and the best brews in town.'],
+    ['bouldering','Bouldering','b','t1',880,21,'Projects, beta and chalk everywhere. Indoor and outdoor.'],
+    ['indie-games','Indie Games','i','t5',1320,47,'The weird and the wonderful. Devs and players both welcome.'],
+    ['natural-wine','Natural Wine','w','t4',560,12,'Low-intervention, funky, a little cloudy. Bottle recs + tastings.'],
+    ['typography','Typography','t','t2',990,18,'Type that sings. Specimens, kerning crimes and font finds.'],
+    ['yoga','Yoga','y','t3',1450,55,'Breath and movement. Studios, home practice and teachers.'],
   ];
   for (const [slug,name,mono,tone,sm,so,description] of tribes)
     data.tribes.push({ id: ++data.seq.tribes, slug, name, mono, tone, seed_members: sm, seed_online: so, description, created_at: now });
@@ -81,12 +81,12 @@ function seedWorld() {
 
   const addPost = (slug, key, body, hrs) => { const tb = data.tribes.find(t => t.slug === slug);
     data.posts.push({ id: ++data.seq.posts, tribe_id: tb.id, user_id: demoId[key], body, created_at: now - hrs * 3600e3 }); };
-  addPost('trail-running','rohan','anyone up for the ridge loop saturday at 6? aiming for sunrise at the top.',3);
-  addPost('trail-running','priya','new shoes review incoming — the grip on wet rock is unreal.',26);
-  addPost('film-photography','elena','pushed tri-x to 1600 for the gig and it absolutely sings. grain for days.',5);
-  addPost('jazz-heads','kai','spinning a love supreme on repeat tonight. what is your desert-island record?',8);
-  addPost('cold-brew-club','dev','dialled in a 1:8 concentrate, 18h cold. which roaster are you running?',12);
-  addPost('bouldering','noor','finally topped the overhang project in the cave. chalk everywhere.',30);
+  addPost('trail-running','rohan','Anyone up for the ridge loop Saturday at 6? Aiming for sunrise at the top.',3);
+  addPost('trail-running','priya','New shoes review incoming — the grip on wet rock is unreal.',26);
+  addPost('film-photography','elena','Pushed Tri-X to 1600 for the gig and it absolutely sings. Grain for days.',5);
+  addPost('jazz-heads','kai','Spinning A Love Supreme on repeat tonight. What is your desert-island record?',8);
+  addPost('cold-brew-club','dev','Dialled in a 1:8 concentrate, 18h cold. Which roaster are you running?',12);
+  addPost('bouldering','noor','Finally topped the overhang project in the cave. Chalk everywhere.',30);
   persist();
 }
 
@@ -110,7 +110,7 @@ function tribePublic(t, viewerId) {
 }
 function postPublic(p) {
   const u = data.users.find(x => x.id === p.user_id) || {};
-  return { id:p.id, body:p.body, ago: ago(p.created_at), author:{ name:u.name||'someone', mono:(u.name||'?')[0].toLowerCase(), tone:u.tone||'t1', handle:u.handle } };
+  return { id:p.id, body:p.body, ago: ago(p.created_at), author:{ name:u.name||'Someone', mono:(u.name||'?')[0].toLowerCase(), tone:u.tone||'t1', handle:u.handle } };
 }
 // ---- match engine helpers (Phase 3) ----
 const interestName = (id) => (data.interests.find(i => i.id === id) || {}).name;
@@ -137,13 +137,13 @@ function seedOpener(conv, fromId, viewerId) {
   if (data.messages.some(m => m.conversation_id === conv.id)) return;
   const u = module.exports.userById(fromId); if (!u || !u.seed) return;
   const shared = userCard(viewerId, u).shared;
-  const body = shared.length ? `hey! saw we're both into ${shared[0]} — how'd you get into it?` : `hey! we just matched — what have you been into lately?`;
+  const body = shared.length ? `Hey! Saw we're both into ${shared[0]} — how'd you get into it?` : `Hey! We just matched — what have you been into lately?`;
   data.messages.push({ id: ++data.seq.messages, conversation_id: conv.id, sender_id: fromId, body, created_at: Date.now() - 60000, read_at: null });
 }
 // a seed user replies a few seconds after you message them (makes chat feel live + demoes polling)
 function scheduleReply(convId, fromId) {
   setTimeout(() => { try {
-    const lines = ["nice — we should do a saturday run sometime.", "ha, love that. what first got you into it?", "oh same! we should swap recs.", "that's the dream honestly.", "100%. you around this weekend?", "let's make it happen soon."];
+    const lines = ["Nice — we should do a Saturday run sometime.", "Ha, love that. What first got you into it?", "Oh same! We should swap recs.", "That's the dream honestly.", "100%. You around this weekend?", "Let's make it happen soon."];
     data.messages.push({ id: ++data.seq.messages, conversation_id: convId, sender_id: fromId, body: lines[Math.floor(Math.random()*lines.length)], created_at: Date.now(), read_at: null });
     persist();
   } catch {} }, 2500 + Math.floor(Math.random() * 2500));
@@ -262,7 +262,7 @@ module.exports = {
       if (!msgs.length) return null;
       const last = msgs[0];
       return { id:u.id, name:u.name, mono:(u.name||'?')[0].toLowerCase(), tone:u.tone,
-        preview: (last.sender_id === viewerId ? 'you: ' : '') + last.body, ago: ago(last.created_at), ts: last.created_at,
+        preview: (last.sender_id === viewerId ? 'You: ' : '') + last.body, ago: ago(last.created_at), ts: last.created_at,
         unread: msgs.some(m => m.sender_id !== viewerId && !m.read_at) };
     }).filter(Boolean).sort((a,b)=>b.ts-a.ts);
   },
@@ -271,7 +271,7 @@ module.exports = {
     data.connections.filter(c => c.from_user === viewerId && c.status === 'connected').forEach(c => {
       const u = module.exports.userById(c.to_user); if (!u) return;
       const card = userCard(viewerId, u);
-      out.push({ type:'match', actor: actorOf(u), text: `new match — ${u.name}. you share ${card.sharedCount} interest${card.sharedCount===1?'':'s'}.`, ts: c.created_at, unread: false });
+      out.push({ type:'match', actor: actorOf(u), text: `New match — ${u.name}. You share ${card.sharedCount} interest${card.sharedCount===1?'':'s'}.`, ts: c.created_at, unread: false });
     });
     const myConvs = new Set(data.conversations.filter(c => c.user_a === viewerId || c.user_b === viewerId).map(c => c.id));
     const bySender = {};
