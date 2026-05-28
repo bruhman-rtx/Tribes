@@ -33,6 +33,9 @@ const API = {
   leave:(slug)=>post('/api/tribes/'+slug+'/leave',{}),
   createPost:(slug,body)=>post('/api/tribes/'+slug+'/posts',{body}),
   soundHorn:(slug,body,expiresHours)=>post('/api/tribes/'+slug+'/posts',{body,type:'horn',expiresHours}),
+  createPoll:(slug,body,options)=>post('/api/tribes/'+slug+'/posts',{body,type:'poll',options}),
+  votePoll:(id,optionIndex)=>post('/api/posts/'+id+'/vote',{optionIndex}),
+  updateProfile:(b)=>post('/api/me/profile',b),
   pinPost:(id)=>post('/api/posts/'+id+'/pin',{}),
   unpinPost:(id)=>post('/api/posts/'+id+'/unpin',{}),
   matchCandidates:()=>getJSON('/api/match/candidates'),
@@ -189,6 +192,12 @@ async function hydrateMe(){
     try{await API.signout();}catch{} clearRoute(); STATE.user=null;STATE.interests=[];STATE.interestIds=[]; stack=['01_welcome']; render();
   });
   on('.icon-btn', ()=>{ const r=sc.querySelector('[data-zen-toggle]'); if(r) r.scrollIntoView({behavior:'smooth',block:'center'}); });
+  // "Edit" button on profile row + "edit" link on "your interests" section
+  const editBtns = [...sc.querySelectorAll('.btn-sm')].filter(b=>/edit/i.test(b.textContent.trim()));
+  editBtns.forEach(b=>b.addEventListener('click', editProfileFlow));
+  // "edit" link on the your-interests sec
+  const interestsEditLink = [...sc.querySelectorAll('.sec a')].find(a=>/edit/i.test(a.textContent.trim()));
+  interestsEditLink && interestsEditLink.addEventListener('click', ()=>go('04_pick_interests'));
 }
 
 // ---------- hydration: tribes (Phase 2) ----------
@@ -233,7 +242,15 @@ async function hydrateTribe(){
   const res = slug ? await API.tribe(slug).catch(()=>null) : null;
   const t = res && res.tribe;
   if(!t){ sc.innerHTML='<div class="card" style="margin-top:20px"><div class="muted">Tribe not found.</div></div>'; return; }
-  const postHtml=p=>`<div style="padding:14px 0;border-bottom:1px solid var(--line);${p.pinned?'background:var(--acc-50);margin:0 -20px;padding:14px 20px':''}"><div style="display:flex;align-items:center;gap:11px"><div class="mono s ${p.author.tone}">${p.author.mono}</div><div class="grow"><div style="display:flex;align-items:center;gap:8px"><div class="nm" style="font-size:14px">${esc(p.author.name)}</div>${p.pinned?'<span class="eyebrow" style="font-size:9px"><i class="ph ph-push-pin-simple"></i> pinned</span>':''}</div><div class="sub">${p.ago}</div></div>${p.mine?`<button class="icon-btn" data-${p.pinned?'unpin':'pin'}-post="${p.id}" title="${p.pinned?'Unpin':'Pin for 24h'}" style="width:30px;height:30px;font-size:15px;color:${p.pinned?'var(--accent)':'var(--ink-soft)'}"><i class="ph ph-push-pin-simple${p.pinned?'-slash':''}"></i></button>`:''}<button class="icon-btn" data-report-post="${p.id}" title="Report this post" style="width:30px;height:30px;font-size:15px;color:var(--ink-soft)"><i class="ph ph-flag"></i></button></div><p style="font-size:14px;line-height:1.5;margin:10px 0 0">${esc(p.body)}</p></div>`;
+  const pollBody=p=>{
+    const voted = p.myVote >= 0;
+    return p.options.map((o,i)=>{
+      const isMine = p.myVote === i;
+      if(!voted) return `<button class="poll-opt" data-vote="${p.id}:${i}" style="display:block;width:100%;text-align:left;border:1.5px solid var(--ink);background:var(--surface);border-radius:6px;padding:10px 14px;margin-top:8px;font-family:inherit;font-size:14px;font-weight:500;color:var(--ink);cursor:pointer">${esc(o.text)}</button>`;
+      return `<div data-vote="${p.id}:${i}" style="position:relative;border:1.5px solid var(--ink);border-radius:6px;padding:10px 14px;margin-top:8px;cursor:pointer;overflow:hidden;background:var(--surface)"><div style="position:absolute;inset:0;background:${isMine?'var(--accent)':'var(--acc-100)'};width:${o.pct}%;transition:width .3s ease"></div><div style="position:relative;display:flex;justify-content:space-between;align-items:center;font-size:14px;font-weight:500;color:${isMine?'var(--accent-ink)':'var(--ink)'}"><span>${esc(o.text)}${isMine?' <i class="ph ph-check"></i>':''}</span><span style="font-weight:700">${o.pct}%</span></div></div>`;
+    }).join('') + `<div class="muted" style="font-size:12px;margin-top:10px">${p.totalVotes} vote${p.totalVotes===1?'':'s'}${voted?' · tap to change':''}</div>`;
+  };
+  const postHtml=p=>`<div style="padding:14px 0;border-bottom:1px solid var(--line);${p.pinned?'background:var(--acc-50);margin:0 -20px;padding:14px 20px':''}"><div style="display:flex;align-items:center;gap:11px"><div class="mono s ${p.author.tone}">${p.author.mono}</div><div class="grow"><div style="display:flex;align-items:center;gap:8px"><div class="nm" style="font-size:14px">${esc(p.author.name)}</div>${p.type==='poll'?'<span class="eyebrow" style="font-size:9px"><i class="ph ph-chart-bar"></i> poll</span>':''}${p.pinned?'<span class="eyebrow" style="font-size:9px"><i class="ph ph-push-pin-simple"></i> pinned</span>':''}</div><div class="sub">${p.ago}</div></div>${p.mine?`<button class="icon-btn" data-${p.pinned?'unpin':'pin'}-post="${p.id}" title="${p.pinned?'Unpin':'Pin for 24h'}" style="width:30px;height:30px;font-size:15px;color:${p.pinned?'var(--accent)':'var(--ink-soft)'}"><i class="ph ph-push-pin-simple${p.pinned?'-slash':''}"></i></button>`:''}<button class="icon-btn" data-report-post="${p.id}" title="Report this post" style="width:30px;height:30px;font-size:15px;color:var(--ink-soft)"><i class="ph ph-flag"></i></button></div><p style="font-size:14px;line-height:1.5;margin:10px 0 0;${p.type==='poll'?'font-weight:600':''}">${esc(p.body)}</p>${p.type==='poll'?pollBody(p):''}</div>`;
   const hornHtml=h=>`<div data-horn-id="${h.id}" style="border:1.5px solid var(--accent);background:var(--acc-50);border-radius:8px;padding:14px;margin-bottom:10px;position:relative"><div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><div class="mono xs ${h.author.tone}">${h.author.mono}</div><div class="grow"><div class="nm" style="font-size:13px">${esc(h.author.name)}</div></div><div class="eyebrow" style="display:flex;align-items:center;gap:4px"><i class="ph ph-megaphone-simple"></i>${h.expires_in_min < 60 ? h.expires_in_min + 'm left' : Math.round(h.expires_in_min/60) + 'h left'}</div></div><p style="font-size:15px;line-height:1.45;color:var(--ink);font-weight:500">${esc(h.body)}</p></div>`;
   const memberHtml=m=>`<div class="row"><div class="mono s ${m.tone}">${m.mono}</div><div class="grow"><div class="nm">${esc(m.name)}</div><div class="sub">${esc(m.handle||'')}</div></div></div>`;
   const horns = t.horns || [];
@@ -242,7 +259,7 @@ async function hydrateTribe(){
   sc.innerHTML =
     `<div style="display:flex;align-items:center;gap:15px;padding-top:4px"><div class="mono xl ${t.tone}">${t.mono}</div><div><h1 class="h-lg">${esc(t.name)}</h1><div class="muted" style="font-size:13px;margin-top:3px">${num(t.members)} members · ${t.online} online</div></div></div>`+
     `<p class="muted" style="font-size:14px;line-height:1.5;margin:16px 0">${esc(t.description)}</p>`+
-    `<div style="display:flex;gap:10px"><button class="btn ${t.joined?'btn-soft':'btn-primary'}" style="flex:1" data-toggle>${t.joined?'Leave tribe':'Join tribe'}</button>${t.joined?'<button class="btn btn-ghost" data-compose title="New post"><i class="ph ph-pencil-simple-line"></i></button><button class="btn btn-ghost" data-horn title="Sound the Horn"><i class="ph ph-megaphone-simple"></i></button>':''}<button class="btn btn-ghost" data-share title="Share tribe"><i class="ph ph-share-network"></i></button></div>`+
+    `<div style="display:flex;gap:10px"><button class="btn ${t.joined?'btn-soft':'btn-primary'}" style="flex:1" data-toggle>${t.joined?'Leave tribe':'Join tribe'}</button>${t.joined?'<button class="btn btn-ghost" data-compose title="New post"><i class="ph ph-pencil-simple-line"></i></button><button class="btn btn-ghost" data-poll title="Create poll"><i class="ph ph-chart-bar"></i></button><button class="btn btn-ghost" data-horn title="Sound the Horn"><i class="ph ph-megaphone-simple"></i></button>':''}<button class="btn btn-ghost" data-share title="Share tribe"><i class="ph ph-share-network"></i></button></div>`+
     `<div class="tabs" style="margin-top:20px"><span class="tab on" data-tab="posts">posts</span><span class="tab" data-tab="members">members</span><span class="tab" data-tab="about">about</span></div>`+
     `<div data-pane style="padding-top:6px">${postsPane()}</div>`;
   const pane=sc.querySelector('[data-pane]');
@@ -262,6 +279,12 @@ async function hydrateTribe(){
     catch { toast(url); }
   });
   sc.querySelector('[data-horn]')?.addEventListener('click', ()=>hornFlow(slug));
+  sc.querySelector('[data-poll]')?.addEventListener('click', ()=>pollFlow(slug));
+  sc.querySelectorAll('[data-vote]').forEach(b=>b.addEventListener('click', async e=>{
+    e.stopPropagation();
+    const [pid, idx] = b.dataset.vote.split(':');
+    try { await API.votePoll(pid, Number(idx)); hydrateTribe(); } catch { toast('Could not vote.'); }
+  }));
   sc.querySelectorAll('[data-report-post]').forEach(b=>b.addEventListener('click', e=>{
     e.stopPropagation(); reportFlow('post', Number(b.dataset.reportPost));
   }));
@@ -290,6 +313,55 @@ function hornFlow(slug){
     catch { toast('Could not sound horn.'); }
   });
   setTimeout(()=>ta.focus(), 60);
+}
+
+function pollFlow(slug){
+  const m = modal(`<div class="h-md" style="margin-bottom:6px"><i class="ph ph-chart-bar" style="color:var(--accent)"></i> New poll</div><div class="muted" style="font-size:13px;line-height:1.5;margin-bottom:14px">Ask the tribe. Two to four options. Anyone can vote, once — they can change their mind.</div><textarea class="input" id="pq" rows="2" maxlength="280" placeholder="Best long run shoe for the wet months?" style="font-size:15px;resize:none;margin-bottom:10px"></textarea><div data-opts><input class="input poll-input" data-opt="0" maxlength="60" placeholder="Option 1" style="font-size:14px;margin-bottom:6px"><input class="input poll-input" data-opt="1" maxlength="60" placeholder="Option 2" style="font-size:14px;margin-bottom:6px"></div><button class="btn btn-ghost btn-sm" data-add-opt style="width:100%;margin-bottom:10px"><i class="ph ph-plus"></i> Add option</button><div style="display:flex;gap:8px"><button class="btn btn-ghost" data-cancel style="flex:1">Cancel</button><button class="btn btn-primary" data-send style="flex:1">Post poll</button></div>`);
+  let optCount = 2;
+  const optsEl = m.el.querySelector('[data-opts]');
+  const addBtn = m.el.querySelector('[data-add-opt]');
+  const refreshAddBtn = ()=>{ addBtn.style.display = optCount >= 4 ? 'none' : ''; };
+  addBtn.addEventListener('click', ()=>{
+    if (optCount >= 4) return;
+    const inp = document.createElement('input');
+    inp.className = 'input poll-input';
+    inp.dataset.opt = String(optCount);
+    inp.maxLength = 60;
+    inp.placeholder = 'Option ' + (optCount + 1);
+    inp.style.cssText = 'font-size:14px;margin-bottom:6px';
+    optsEl.appendChild(inp);
+    optCount++;
+    refreshAddBtn();
+  });
+  m.el.querySelector('[data-cancel]').addEventListener('click', m.close);
+  m.el.querySelector('[data-send]').addEventListener('click', async ()=>{
+    const q = m.el.querySelector('#pq').value.trim();
+    const options = [...m.el.querySelectorAll('[data-opt]')].map(i=>i.value.trim()).filter(Boolean);
+    if (!q) { toast('Add a question.'); return; }
+    if (options.length < 2) { toast('Need at least 2 options.'); return; }
+    try { await API.createPoll(slug, q, options); m.close(); toast('Poll posted.'); hydrateTribe(); }
+    catch (e) { toast(e.message || 'Could not post poll.'); }
+  });
+  setTimeout(()=>m.el.querySelector('#pq').focus(), 60);
+}
+
+function editProfileFlow(){
+  const u = STATE.user || {};
+  const m = modal(`<div class="h-md" style="margin-bottom:14px">Edit profile</div><div class="field"><label>Name</label><input class="input" id="ep-name" maxlength="60" value="${esc(u.name||'')}" style="font-size:14px"></div><div class="field"><label>City</label><input class="input" id="ep-city" maxlength="60" value="${esc(u.city||'')}" placeholder="Where you're based" style="font-size:14px"></div><div class="field"><label>Bio</label><textarea class="input" id="ep-bio" rows="3" maxlength="240" placeholder="One line — what you're into right now." style="font-size:14px;resize:none">${esc(u.bio||'')}</textarea></div><div style="display:flex;gap:8px;margin-top:8px"><button class="btn btn-ghost" data-cancel style="flex:1">Cancel</button><button class="btn btn-primary" data-save style="flex:1">Save</button></div>`);
+  m.el.querySelector('[data-cancel]').addEventListener('click', m.close);
+  m.el.querySelector('[data-save]').addEventListener('click', async ()=>{
+    const name = m.el.querySelector('#ep-name').value;
+    const city = m.el.querySelector('#ep-city').value;
+    const bio = m.el.querySelector('#ep-bio').value;
+    if (!name.trim()) { toast('Name required.'); return; }
+    try {
+      const r = await API.updateProfile({ name, city, bio });
+      STATE.user = r.user;
+      m.close(); toast('Profile updated.');
+      hydrateMe();
+    } catch (e) { toast(e.message || 'Could not update.'); }
+  });
+  setTimeout(()=>m.el.querySelector('#ep-name').focus(), 60);
 }
 
 async function hydrateCreate(){

@@ -134,6 +134,14 @@ app.post('/api/tribes/:slug/posts', requireAuth, (req, res) => {
     opts.type = 'horn';
     if (body.length > 140) return res.status(400).json({ error: 'Horns are 140 characters max' });
     if (req.body.expiresHours) opts.expiresHours = Number(req.body.expiresHours);
+  } else if (req.body && req.body.type === 'poll') {
+    opts.type = 'poll';
+    if (body.length > 280) return res.status(400).json({ error: 'Poll questions are 280 characters max' });
+    const options = Array.isArray(req.body.options) ? req.body.options : [];
+    const cleaned = options.map(s => String(s || '').trim()).filter(Boolean);
+    if (cleaned.length < 2) return res.status(400).json({ error: 'A poll needs at least 2 options' });
+    if (cleaned.length > 4) return res.status(400).json({ error: 'A poll can have at most 4 options' });
+    opts.options = cleaned;
   }
   const post = db.createPost(req.user.id, req.params.slug, body, opts);
   if (!post) return res.status(404).json({ error: 'tribe not found' });
@@ -147,6 +155,16 @@ app.post('/api/posts/:id/pin', requireAuth, (req, res) => {
 app.post('/api/posts/:id/unpin', requireAuth, (req, res) => {
   if (!db.unpinPost(req.user.id, req.params.id)) return res.status(404).json({ error: 'cannot unpin' });
   res.json({ ok: true });
+});
+app.post('/api/posts/:id/vote', requireAuth, (req, res) => {
+  const post = db.votePoll(req.user.id, req.params.id, req.body && req.body.optionIndex);
+  if (!post) return res.status(400).json({ error: 'Invalid vote' });
+  res.json({ post });
+});
+app.post('/api/me/profile', requireAuth, (req, res) => {
+  const u = db.updateProfile(req.user.id, req.body || {});
+  if (!u) return res.status(400).json({ error: 'Could not update profile' });
+  res.json({ user: db.publicUser(u) });
 });
 
 // ---- match engine (Phase 3) ----

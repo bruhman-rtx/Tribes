@@ -110,9 +110,9 @@ function tribePublic(t, viewerId) {
     members: t.seed_members + tribeMemberCount(t.id), online: t.seed_online,
     joined: viewerId ? isMember(t.id, viewerId) : false };
 }
-function postPublic(p) {
+function postPublic(p, viewerId) {
   const u = data.users.find(x => x.id === p.user_id) || {};
-  return {
+  const out = {
     id: p.id,
     body: p.body,
     ago: ago(p.created_at),
@@ -121,6 +121,18 @@ function postPublic(p) {
     expires_at: p.expires_at || null,
     pinned_until: p.pinned_until || null,
   };
+  if (p.type === 'poll' && Array.isArray(p.options)) {
+    const totalVotes = p.options.reduce((s, o) => s + (o.voters ? o.voters.length : 0), 0);
+    let myVote = -1;
+    out.options = p.options.map((o, i) => {
+      const count = o.voters ? o.voters.length : 0;
+      if (viewerId && o.voters && o.voters.includes(viewerId)) myVote = i;
+      return { text: o.text, count, pct: totalVotes ? Math.round((count / totalVotes) * 100) : 0 };
+    });
+    out.totalVotes = totalVotes;
+    out.myVote = myVote;
+  }
+  return out;
 }
 const isLive = (p) => !p.expires_at || p.expires_at > Date.now();
 const isPinned = (p) => p.pinned_until && p.pinned_until > Date.now();
@@ -244,12 +256,12 @@ module.exports = {
     pub.horns = allTribePosts
       .filter(p => p.type === 'horn' && isLive(p))
       .sort((a, b) => b.created_at - a.created_at)
-      .map(p => ({ ...postPublic(p), mine: viewerId === p.user_id, expires_in_min: Math.max(0, Math.round((p.expires_at - Date.now()) / 60000)) }));
-    // Pinned posts (unexpired pin) bubble to the top
-    const regular = allTribePosts.filter(p => (p.type || 'post') === 'post').sort((a, b) => b.created_at - a.created_at);
+      .map(p => ({ ...postPublic(p, viewerId), mine: viewerId === p.user_id, expires_in_min: Math.max(0, Math.round((p.expires_at - Date.now()) / 60000)) }));
+    // Regular posts + polls share the main feed; pinned bubble to top
+    const regular = allTribePosts.filter(p => p.type !== 'horn').sort((a, b) => b.created_at - a.created_at);
     const pinned = regular.filter(isPinned);
     const rest = regular.filter(p => !isPinned(p));
-    pub.posts = [...pinned, ...rest].map(p => ({ ...postPublic(p), mine: viewerId === p.user_id, pinned: isPinned(p) }));
+    pub.posts = [...pinned, ...rest].map(p => ({ ...postPublic(p, viewerId), mine: viewerId === p.user_id, pinned: isPinned(p) }));
     return pub;
   },
   joinTribe(uid, slug) { const t = data.tribes.find(x=>x.slug===slug); if (!t) return false; if (!isMember(t.id,uid)) { data.tribeMembers.push({ tribe_id:t.id, user_id:uid, joined_at:Date.now() }); persist(); } return true; },
@@ -257,15 +269,43 @@ module.exports = {
   userTribes: (uid) => data.tribeMembers.filter(m => m.user_id === uid).map(m => tribePublic(data.tribes.find(t=>t.id===m.tribe_id), uid)),
   createPost(uid, slug, body, opts = {}) {
     const t = data.tribes.find(x=>x.slug===slug); if (!t) return null;
-    const type = opts.type === 'horn' ? 'horn' : 'post';
-    const maxLen = type === 'horn' ? 140 : 1000;
+    let type = 'post';
+    if (opts.type === 'horn') type = 'horn';
+    else if (opts.type === 'poll') type = 'poll';
+    const maxLen = type === 'horn' ? 140 : 280;
     const p = { id: ++data.seq.posts, tribe_id: t.id, user_id: uid, body: String(body).slice(0, maxLen), created_at: Date.now(), type };
     if (type === 'horn') {
       const hours = Math.min(6, Math.max(0.25, Number(opts.expiresHours) || 2));
       p.expires_at = Date.now() + Math.round(hours * 3600 * 1000);
     }
+    if (type === 'poll') {
+      const options = Array.isArray(opts.options) ? opts.options.filter(s => String(s || '').trim()).slice(0, 4) : [];
+      if (options.length < 2) return null;
+      p.options = options.map(text => ({ text: String(text).slice(0, 60), voters: [] }));
+    }
     data.posts.push(p); if (!isMember(t.id,uid)) data.tribeMembers.push({ tribe_id:t.id, user_id:uid, joined_at:Date.now() });
-    persist(); return postPublic(p);
+    persist(); return postPublic(p, uid);
+  },
+  votePoll(uid, postId, optionIndex) {
+    const p = data.posts.find(x => x.id === Number(postId));
+    if (!p || p.type !== 'poll' || !Array.isArray(p.options)) return null;
+    const idx = Number(optionIndex);
+    if (!(idx >= 0 && idx < p.options.length)) return null;
+    p.options.forEach(o => { o.voters = (o.voters || []).filter(v => v !== uid); });
+    p.options[idx].voters.push(uid);
+    persist();
+    return postPublic(p, uid);
+  },
+  updateProfile(uid, { name, city, bio }) {
+    const u = data.users.find(x => x.id === uid); if (!u) return null;
+    if (typeof name === 'string' && name.trim()) {
+      u.name = name.trim().slice(0, 60);
+      u.handle = '@' + u.name.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 14);
+    }
+    if (typeof city === 'string') u.city = city.trim().slice(0, 60) || null;
+    if (typeof bio === 'string') u.bio = bio.trim().slice(0, 240) || null;
+    persist();
+    return u;
   },
   pinPost(uid, postId) {
     const p = data.posts.find(x => x.id === Number(postId)); if (!p || p.user_id !== uid || p.type === 'horn') return false;
