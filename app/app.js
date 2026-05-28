@@ -32,6 +32,9 @@ const API = {
   join:(slug)=>post('/api/tribes/'+slug+'/join',{}),
   leave:(slug)=>post('/api/tribes/'+slug+'/leave',{}),
   createPost:(slug,body)=>post('/api/tribes/'+slug+'/posts',{body}),
+  soundHorn:(slug,body,expiresHours)=>post('/api/tribes/'+slug+'/posts',{body,type:'horn',expiresHours}),
+  pinPost:(id)=>post('/api/posts/'+id+'/pin',{}),
+  unpinPost:(id)=>post('/api/posts/'+id+'/unpin',{}),
   matchCandidates:()=>getJSON('/api/match/candidates'),
   matches:()=>getJSON('/api/matches'),
   userProfile:(id)=>getJSON('/api/users/'+id),
@@ -156,7 +159,8 @@ async function hydrateMe(){
   const chips=stage.querySelector('.chips'); if(chips) chips.innerHTML=(STATE.interests.length?STATE.interests:['Add some interests']).map(n=>`<span class="chip on">${esc(n)}</span>`).join('');
   let mt={tribes:[]}; try{ mt=await API.myTribes()||mt; }catch{}
   const tribes=mt.tribes||[];
-  const stats=stage.querySelectorAll('.stat b'); if(stats[0])stats[0].textContent=STATE.interests.length; if(stats[1])stats[1].textContent=tribes.length;
+  let matchCount=0; try{ const r=await API.matches(); matchCount=(r?.matches||[]).length; }catch{}
+  const stats=stage.querySelectorAll('.stat b'); if(stats[0])stats[0].textContent=STATE.interests.length; if(stats[1])stats[1].textContent=tribes.length; if(stats[2])stats[2].textContent=matchCount;
   const sc=stage.querySelector('.scroll');
   // Clear any previously appended dynamic content (tribes list, "no tribes" line, account block) so re-hydration doesn't duplicate
   sc.querySelectorAll('[data-dyn-me]').forEach(n=>n.remove());
@@ -229,13 +233,16 @@ async function hydrateTribe(){
   const res = slug ? await API.tribe(slug).catch(()=>null) : null;
   const t = res && res.tribe;
   if(!t){ sc.innerHTML='<div class="card" style="margin-top:20px"><div class="muted">Tribe not found.</div></div>'; return; }
-  const postHtml=p=>`<div style="padding:14px 0;border-bottom:1px solid var(--line)"><div style="display:flex;align-items:center;gap:11px"><div class="mono s ${p.author.tone}">${p.author.mono}</div><div class="grow"><div class="nm" style="font-size:14px">${esc(p.author.name)}</div><div class="sub">${p.ago}</div></div><button class="icon-btn" data-report-post="${p.id}" title="Report this post" style="width:30px;height:30px;font-size:15px;color:var(--ink-soft)"><i class="ph ph-flag"></i></button></div><p style="font-size:14px;line-height:1.5;margin:10px 0 0">${esc(p.body)}</p></div>`;
+  const postHtml=p=>`<div style="padding:14px 0;border-bottom:1px solid var(--line);${p.pinned?'background:var(--acc-50);margin:0 -20px;padding:14px 20px':''}"><div style="display:flex;align-items:center;gap:11px"><div class="mono s ${p.author.tone}">${p.author.mono}</div><div class="grow"><div style="display:flex;align-items:center;gap:8px"><div class="nm" style="font-size:14px">${esc(p.author.name)}</div>${p.pinned?'<span class="eyebrow" style="font-size:9px"><i class="ph ph-push-pin-simple"></i> pinned</span>':''}</div><div class="sub">${p.ago}</div></div>${p.mine?`<button class="icon-btn" data-${p.pinned?'unpin':'pin'}-post="${p.id}" title="${p.pinned?'Unpin':'Pin for 24h'}" style="width:30px;height:30px;font-size:15px;color:${p.pinned?'var(--accent)':'var(--ink-soft)'}"><i class="ph ph-push-pin-simple${p.pinned?'-slash':''}"></i></button>`:''}<button class="icon-btn" data-report-post="${p.id}" title="Report this post" style="width:30px;height:30px;font-size:15px;color:var(--ink-soft)"><i class="ph ph-flag"></i></button></div><p style="font-size:14px;line-height:1.5;margin:10px 0 0">${esc(p.body)}</p></div>`;
+  const hornHtml=h=>`<div data-horn-id="${h.id}" style="border:1.5px solid var(--accent);background:var(--acc-50);border-radius:8px;padding:14px;margin-bottom:10px;position:relative"><div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><div class="mono xs ${h.author.tone}">${h.author.mono}</div><div class="grow"><div class="nm" style="font-size:13px">${esc(h.author.name)}</div></div><div class="eyebrow" style="display:flex;align-items:center;gap:4px"><i class="ph ph-megaphone-simple"></i>${h.expires_in_min < 60 ? h.expires_in_min + 'm left' : Math.round(h.expires_in_min/60) + 'h left'}</div></div><p style="font-size:15px;line-height:1.45;color:var(--ink);font-weight:500">${esc(h.body)}</p></div>`;
   const memberHtml=m=>`<div class="row"><div class="mono s ${m.tone}">${m.mono}</div><div class="grow"><div class="nm">${esc(m.name)}</div><div class="sub">${esc(m.handle||'')}</div></div></div>`;
-  const postsPane=()=> t.posts.length? t.posts.map(postHtml).join('') : '<div class="muted" style="padding:18px 0;font-size:14px">No posts yet — be the first.</div>';
+  const horns = t.horns || [];
+  const hornsBlock = horns.length ? `<div style="margin-bottom:14px"><div class="eyebrow" style="margin-bottom:9px;display:flex;align-items:center;gap:6px"><i class="ph ph-megaphone-simple"></i>sounding right now</div>${horns.map(hornHtml).join('')}</div>` : '';
+  const postsPane=()=> hornsBlock + (t.posts.length? t.posts.map(postHtml).join('') : '<div class="muted" style="padding:18px 0;font-size:14px">No posts yet — be the first.</div>');
   sc.innerHTML =
     `<div style="display:flex;align-items:center;gap:15px;padding-top:4px"><div class="mono xl ${t.tone}">${t.mono}</div><div><h1 class="h-lg">${esc(t.name)}</h1><div class="muted" style="font-size:13px;margin-top:3px">${num(t.members)} members · ${t.online} online</div></div></div>`+
     `<p class="muted" style="font-size:14px;line-height:1.5;margin:16px 0">${esc(t.description)}</p>`+
-    `<div style="display:flex;gap:10px"><button class="btn ${t.joined?'btn-soft':'btn-primary'}" style="flex:1" data-toggle>${t.joined?'Leave tribe':'Join tribe'}</button>${t.joined?'<button class="btn btn-ghost" data-compose title="New post"><i class="ph ph-pencil-simple-line"></i></button>':''}<button class="btn btn-ghost" data-share title="Share tribe"><i class="ph ph-share-network"></i></button></div>`+
+    `<div style="display:flex;gap:10px"><button class="btn ${t.joined?'btn-soft':'btn-primary'}" style="flex:1" data-toggle>${t.joined?'Leave tribe':'Join tribe'}</button>${t.joined?'<button class="btn btn-ghost" data-compose title="New post"><i class="ph ph-pencil-simple-line"></i></button><button class="btn btn-ghost" data-horn title="Sound the Horn"><i class="ph ph-megaphone-simple"></i></button>':''}<button class="btn btn-ghost" data-share title="Share tribe"><i class="ph ph-share-network"></i></button></div>`+
     `<div class="tabs" style="margin-top:20px"><span class="tab on" data-tab="posts">posts</span><span class="tab" data-tab="members">members</span><span class="tab" data-tab="about">about</span></div>`+
     `<div data-pane style="padding-top:6px">${postsPane()}</div>`;
   const pane=sc.querySelector('[data-pane]');
@@ -254,9 +261,35 @@ async function hydrateTribe(){
     try { await navigator.clipboard.writeText(text); toast('Invite copied to clipboard.'); }
     catch { toast(url); }
   });
+  sc.querySelector('[data-horn]')?.addEventListener('click', ()=>hornFlow(slug));
   sc.querySelectorAll('[data-report-post]').forEach(b=>b.addEventListener('click', e=>{
     e.stopPropagation(); reportFlow('post', Number(b.dataset.reportPost));
   }));
+  sc.querySelectorAll('[data-pin-post]').forEach(b=>b.addEventListener('click', async e=>{
+    e.stopPropagation(); try { await API.pinPost(Number(b.dataset.pinPost)); toast('Pinned for 24h.'); hydrateTribe(); } catch { toast('Could not pin.'); }
+  }));
+  sc.querySelectorAll('[data-unpin-post]').forEach(b=>b.addEventListener('click', async e=>{
+    e.stopPropagation(); try { await API.unpinPost(Number(b.dataset.unpinPost)); toast('Unpinned.'); hydrateTribe(); } catch { toast('Could not unpin.'); }
+  }));
+}
+
+function hornFlow(slug){
+  const m = modal(`<div class="h-md" style="margin-bottom:6px"><i class="ph ph-megaphone-simple" style="color:var(--accent)"></i> Sound the Horn</div><div class="muted" style="font-size:13px;line-height:1.5;margin-bottom:14px">A 140-character broadcast that disappears when its time runs out. Use it for "happening right now" — a meetup, an open invite, a question that won't wait.</div><textarea class="input" id="hbody" rows="3" maxlength="140" placeholder="Grabbing a flat white at Blue Bottle for the next hour — anyone want to chat typography?" style="font-size:15px;resize:none"></textarea><div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:12px"><span class="muted" data-hchars>140</span><div style="display:flex;gap:6px"><span class="chip on" data-hours="2" style="cursor:pointer">2h</span><span class="chip" data-hours="1" style="cursor:pointer">1h</span><span class="chip" data-hours="0.5" style="cursor:pointer">30m</span><span class="chip" data-hours="6" style="cursor:pointer">6h</span></div></div><div style="display:flex;gap:8px;margin-top:14px"><button class="btn btn-ghost" data-cancel style="flex:1">Cancel</button><button class="btn btn-primary" data-send style="flex:1">Sound it</button></div>`);
+  let hours = 2;
+  const ta = m.el.querySelector('#hbody');
+  const counter = m.el.querySelector('[data-hchars]');
+  ta.addEventListener('input', ()=>{ counter.textContent = (140 - ta.value.length); });
+  m.el.querySelectorAll('[data-hours]').forEach(c=>c.addEventListener('click', ()=>{
+    m.el.querySelectorAll('[data-hours]').forEach(x=>x.classList.remove('on'));
+    c.classList.add('on'); hours = Number(c.dataset.hours);
+  }));
+  m.el.querySelector('[data-cancel]').addEventListener('click', m.close);
+  m.el.querySelector('[data-send]').addEventListener('click', async ()=>{
+    const body = ta.value.trim(); if (!body) return;
+    try { await API.soundHorn(slug, body, hours); m.close(); toast('Horn sounded.'); hydrateTribe(); }
+    catch { toast('Could not sound horn.'); }
+  });
+  setTimeout(()=>ta.focus(), 60);
 }
 
 async function hydrateCreate(){

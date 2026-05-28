@@ -129,9 +129,24 @@ app.post('/api/tribes/:slug/leave', requireAuth, (req, res) => {
 app.post('/api/tribes/:slug/posts', requireAuth, (req, res) => {
   const body = (req.body && req.body.body || '').trim();
   if (!body) return res.status(400).json({ error: 'post body required' });
-  const post = db.createPost(req.user.id, req.params.slug, body);
+  const opts = {};
+  if (req.body && req.body.type === 'horn') {
+    opts.type = 'horn';
+    if (body.length > 140) return res.status(400).json({ error: 'Horns are 140 characters max' });
+    if (req.body.expiresHours) opts.expiresHours = Number(req.body.expiresHours);
+  }
+  const post = db.createPost(req.user.id, req.params.slug, body, opts);
   if (!post) return res.status(404).json({ error: 'tribe not found' });
   res.json({ post });
+});
+
+app.post('/api/posts/:id/pin', requireAuth, (req, res) => {
+  if (!db.pinPost(req.user.id, req.params.id)) return res.status(404).json({ error: 'cannot pin' });
+  res.json({ ok: true });
+});
+app.post('/api/posts/:id/unpin', requireAuth, (req, res) => {
+  if (!db.unpinPost(req.user.id, req.params.id)) return res.status(404).json({ error: 'cannot unpin' });
+  res.json({ ok: true });
 });
 
 // ---- match engine (Phase 3) ----

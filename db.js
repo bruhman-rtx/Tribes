@@ -112,8 +112,18 @@ function tribePublic(t, viewerId) {
 }
 function postPublic(p) {
   const u = data.users.find(x => x.id === p.user_id) || {};
-  return { id:p.id, body:p.body, ago: ago(p.created_at), author:{ name:u.name||'Someone', mono:(u.name||'?')[0].toLowerCase(), tone:u.tone||'t1', handle:u.handle } };
+  return {
+    id: p.id,
+    body: p.body,
+    ago: ago(p.created_at),
+    author: { id: u.id, name: u.name || 'Someone', mono: (u.name || '?')[0].toLowerCase(), tone: u.tone || 't1', handle: u.handle },
+    type: p.type || 'post',
+    expires_at: p.expires_at || null,
+    pinned_until: p.pinned_until || null,
+  };
 }
+const isLive = (p) => !p.expires_at || p.expires_at > Date.now();
+const isPinned = (p) => p.pinned_until && p.pinned_until > Date.now();
 // ---- match engine helpers (Phase 3) ----
 const interestName = (id) => (data.interests.find(i => i.id === id) || {}).name;
 const distanceKm = (uid) => (((Math.abs((uid * 2654435761) >>> 0) % 90) / 10) + 0.3).toFixed(1); // stable 0.3–9.3
@@ -229,17 +239,41 @@ module.exports = {
     const t = data.tribes.find(x => x.slug === slug); if (!t) return null;
     const pub = tribePublic(t, viewerId);
     pub.members_list = data.tribeMembers.filter(m => m.tribe_id === t.id).map(m => { const u = data.users.find(x=>x.id===m.user_id)||{}; return { name:u.name, mono:(u.name||'?')[0].toLowerCase(), tone:u.tone||'t1', handle:u.handle }; });
-    pub.posts = data.posts.filter(p => p.tribe_id === t.id).sort((a,b)=>b.created_at-a.created_at).map(postPublic);
+    const allTribePosts = data.posts.filter(p => p.tribe_id === t.id);
+    // Live horns (time-boxed, unexpired) surfaced separately at the top
+    pub.horns = allTribePosts
+      .filter(p => p.type === 'horn' && isLive(p))
+      .sort((a, b) => b.created_at - a.created_at)
+      .map(p => ({ ...postPublic(p), mine: viewerId === p.user_id, expires_in_min: Math.max(0, Math.round((p.expires_at - Date.now()) / 60000)) }));
+    // Pinned posts (unexpired pin) bubble to the top
+    const regular = allTribePosts.filter(p => (p.type || 'post') === 'post').sort((a, b) => b.created_at - a.created_at);
+    const pinned = regular.filter(isPinned);
+    const rest = regular.filter(p => !isPinned(p));
+    pub.posts = [...pinned, ...rest].map(p => ({ ...postPublic(p), mine: viewerId === p.user_id, pinned: isPinned(p) }));
     return pub;
   },
   joinTribe(uid, slug) { const t = data.tribes.find(x=>x.slug===slug); if (!t) return false; if (!isMember(t.id,uid)) { data.tribeMembers.push({ tribe_id:t.id, user_id:uid, joined_at:Date.now() }); persist(); } return true; },
   leaveTribe(uid, slug) { const t = data.tribes.find(x=>x.slug===slug); if (!t) return false; data.tribeMembers = data.tribeMembers.filter(m => !(m.tribe_id===t.id && m.user_id===uid)); persist(); return true; },
   userTribes: (uid) => data.tribeMembers.filter(m => m.user_id === uid).map(m => tribePublic(data.tribes.find(t=>t.id===m.tribe_id), uid)),
-  createPost(uid, slug, body) {
+  createPost(uid, slug, body, opts = {}) {
     const t = data.tribes.find(x=>x.slug===slug); if (!t) return null;
-    const p = { id: ++data.seq.posts, tribe_id:t.id, user_id:uid, body:String(body).slice(0,1000), created_at:Date.now() };
+    const type = opts.type === 'horn' ? 'horn' : 'post';
+    const maxLen = type === 'horn' ? 140 : 1000;
+    const p = { id: ++data.seq.posts, tribe_id: t.id, user_id: uid, body: String(body).slice(0, maxLen), created_at: Date.now(), type };
+    if (type === 'horn') {
+      const hours = Math.min(6, Math.max(0.25, Number(opts.expiresHours) || 2));
+      p.expires_at = Date.now() + Math.round(hours * 3600 * 1000);
+    }
     data.posts.push(p); if (!isMember(t.id,uid)) data.tribeMembers.push({ tribe_id:t.id, user_id:uid, joined_at:Date.now() });
     persist(); return postPublic(p);
+  },
+  pinPost(uid, postId) {
+    const p = data.posts.find(x => x.id === Number(postId)); if (!p || p.user_id !== uid || p.type === 'horn') return false;
+    p.pinned_until = Date.now() + 24 * 3600 * 1000; persist(); return true;
+  },
+  unpinPost(uid, postId) {
+    const p = data.posts.find(x => x.id === Number(postId)); if (!p || p.user_id !== uid) return false;
+    p.pinned_until = null; persist(); return true;
   },
   discover(uid) {
     const mine = module.exports.userTribes(uid);
