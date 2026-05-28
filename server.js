@@ -103,6 +103,12 @@ app.post('/api/me/interests', requireAuth, (req, res) => {
 // ---- tribes (Phase 2) ----
 app.get('/api/tribes', (req, res) => res.json({ tribes: db.listTribes(req.user && req.user.id) }));
 
+app.post('/api/tribes', requireAuth, (req, res) => {
+  const r = db.createTribe(req.user.id, req.body || {});
+  if (r.error) return res.status(400).json({ error: r.error });
+  res.json(r);
+});
+
 app.get('/api/discover', requireAuth, (req, res) => {
   const d = db.discover(req.user.id);
   res.json({ user: db.publicUser(req.user), ...d });

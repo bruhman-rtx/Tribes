@@ -26,6 +26,7 @@ const API = {
   interests:()=>getJSON('/api/interests'),
   saveInterests:(ids)=>post('/api/me/interests',{ids}),
   tribes:()=>getJSON('/api/tribes'),
+  createTribe:(b)=>post('/api/tribes',b),
   discover:()=>getJSON('/api/discover'),
   tribe:(slug)=>getJSON('/api/tribes/'+slug),
   myTribes:()=>getJSON('/api/me/tribes'),
@@ -251,7 +252,39 @@ async function hydrateSearch(){
     c.classList.add('on'); scope=c.dataset.scope; render();
   }));
   render();
+  // New tribe button (in topbar)
+  stage.querySelector('[data-new-tribe]')?.addEventListener('click', ()=>newTribeFlow());
   setTimeout(()=>input&&input.focus(), 80);
+}
+
+function newTribeFlow(){
+  const tones = ['t1','t2','t3','t4','t5'];
+  const m = modal(`<div class="h-md" style="margin-bottom:6px">New tribe</div><div class="muted" style="font-size:13px;line-height:1.5;margin-bottom:14px">Start a tribe for an interest you couldn't find. You'll be the first member.</div><div class="field"><label>Name</label><input class="input" id="nt-name" maxlength="60" placeholder="e.g. Sourdough Bakers" style="font-size:14px"></div><div class="field"><label>Description</label><textarea class="input" id="nt-desc" rows="3" maxlength="200" placeholder="One line — who's this for?" style="font-size:14px;resize:none"></textarea></div><div class="field"><label>Avatar color</label><div style="display:flex;gap:8px" data-tone-picker>${tones.map((t,i)=>`<button class="mono m ${t}" data-tone="${t}" style="cursor:pointer;border:2px solid ${i===0?'var(--ink)':'transparent'};border-radius:8px;width:42px;height:42px;font-size:16px">${(t==='t1'||t==='t3')?'A':'a'}</button>`).join('')}</div></div><div style="display:flex;gap:8px;margin-top:8px"><button class="btn btn-ghost" data-cancel style="flex:1">Cancel</button><button class="btn btn-primary" data-create style="flex:1">Create tribe</button></div>`);
+  let chosenTone = 't1';
+  const updateMono = ()=>{
+    const name = m.el.querySelector('#nt-name').value.trim();
+    const letter = name ? name[0].toLowerCase() : 'a';
+    m.el.querySelectorAll('[data-tone]').forEach(b=>{ b.textContent = letter; });
+  };
+  m.el.querySelector('#nt-name').addEventListener('input', updateMono);
+  m.el.querySelectorAll('[data-tone]').forEach(b=>b.addEventListener('click', ()=>{
+    chosenTone = b.dataset.tone;
+    m.el.querySelectorAll('[data-tone]').forEach(x=>x.style.border = '2px solid transparent');
+    b.style.border = '2px solid var(--ink)';
+  }));
+  m.el.querySelector('[data-cancel]').addEventListener('click', m.close);
+  m.el.querySelector('[data-create]').addEventListener('click', async ()=>{
+    const name = m.el.querySelector('#nt-name').value.trim();
+    const description = m.el.querySelector('#nt-desc').value.trim();
+    if (name.length < 3) { toast('Pick a name (3+ chars).'); return; }
+    try {
+      const r = await API.createTribe({ name, description, tone: chosenTone });
+      m.close(); toast('Tribe created.');
+      STATE.currentTribe = r.tribe.slug;
+      go('07_tribe');
+    } catch (e) { toast(e.message || 'Could not create tribe.'); }
+  });
+  setTimeout(()=>m.el.querySelector('#nt-name').focus(), 60);
 }
 
 async function hydrateTribe(){
@@ -544,9 +577,17 @@ async function hydrateChat(){
 async function hydrateNotifications(){
   const sc=stage.querySelector('.scroll'); if(!sc) return;
   const r=await API.notifications().catch(()=>null); const list=r?.notifications||[];
-  const row=n=>`<div class="row" data-uid="${n.actor.id}" data-type="${n.type}"><div class="mono s ${n.actor.tone}">${n.actor.mono}</div><div class="grow" style="white-space:normal"><div style="font-size:14px;line-height:1.4">${esc(n.text)}</div><div class="sub" style="margin-top:3px">${n.ago}</div></div>${n.unread?'<span class="dot-unread"></span>':''}</div>`;
+  const iconFor = t => t==='horn'?'ph-megaphone-simple':t==='vote'?'ph-chart-bar':t==='message'?'ph-chat-circle':'ph-handshake';
+  const row=n=>`<div class="row" data-uid="${n.actor.id}" data-type="${n.type}" data-slug="${n.slug||''}"><div class="mono s ${n.actor.tone}">${n.actor.mono}</div><div class="grow" style="white-space:normal"><div style="font-size:14px;line-height:1.4;display:flex;align-items:flex-start;gap:8px"><i class="ph ${iconFor(n.type)}" style="font-size:14px;color:var(--accent);margin-top:3px;flex:none"></i><span>${esc(n.text)}</span></div><div class="sub" style="margin-top:3px">${n.ago}</div></div>${n.unread?'<span class="dot-unread"></span>':''}</div>`;
   sc.innerHTML = list.length ? list.map(row).join('') : `<div class="muted" style="font-size:14px;padding:28px 4px;text-align:center;line-height:1.5">Nothing yet — connect with people and the activity shows up here.</div>`;
-  sc.querySelectorAll('[data-uid]').forEach(el=>el.addEventListener('click',()=> el.dataset.type==='message'?goChat(el.dataset.uid):goProfile(el.dataset.uid)));
+  sc.querySelectorAll('[data-uid]').forEach(el=>el.addEventListener('click', ()=>{
+    const type = el.dataset.type;
+    if (type === 'message') return goChat(el.dataset.uid);
+    if (type === 'horn' || type === 'vote') {
+      const slug = el.dataset.slug; if (slug) return goTribe(slug);
+    }
+    goProfile(el.dataset.uid);
+  }));
 }
 
 // ---------- wiring ----------

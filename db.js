@@ -264,6 +264,30 @@ module.exports = {
     pub.posts = [...pinned, ...rest].map(p => ({ ...postPublic(p, viewerId), mine: viewerId === p.user_id, pinned: isPinned(p) }));
     return pub;
   },
+  createTribe(uid, { name, description, tone }) {
+    const cleanName = String(name || '').trim().slice(0, 60);
+    if (cleanName.length < 3) return { error: 'Name must be at least 3 characters' };
+    const slug = cleanName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+    if (!slug) return { error: 'Pick a name with at least one letter' };
+    if (data.tribes.find(t => t.slug === slug)) return { error: 'A tribe with that name already exists' };
+    const validTone = ['t1', 't2', 't3', 't4', 't5'].includes(tone) ? tone : 't' + (1 + (Math.abs(hashStr(slug)) % 5));
+    const t = {
+      id: ++data.seq.tribes,
+      slug,
+      name: cleanName,
+      mono: cleanName[0].toLowerCase(),
+      tone: validTone,
+      description: String(description || '').trim().slice(0, 200) || `A tribe for people who love ${cleanName}.`,
+      seed_members: 0,
+      seed_online: 0,
+      created_by: uid,
+      created_at: Date.now(),
+    };
+    data.tribes.push(t);
+    data.tribeMembers.push({ tribe_id: t.id, user_id: uid, joined_at: Date.now() });
+    persist();
+    return { tribe: tribePublic(t, uid) };
+  },
   joinTribe(uid, slug) { const t = data.tribes.find(x=>x.slug===slug); if (!t) return false; if (!isMember(t.id,uid)) { data.tribeMembers.push({ tribe_id:t.id, user_id:uid, joined_at:Date.now() }); persist(); } return true; },
   leaveTribe(uid, slug) { const t = data.tribes.find(x=>x.slug===slug); if (!t) return false; data.tribeMembers = data.tribeMembers.filter(m => !(m.tribe_id===t.id && m.user_id===uid)); persist(); return true; },
   userTribes: (uid) => data.tribeMembers.filter(m => m.user_id === uid).map(m => tribePublic(data.tribes.find(t=>t.id===m.tribe_id), uid)),
@@ -412,6 +436,29 @@ module.exports = {
       .forEach(m => { if (!bySender[m.sender_id] || m.created_at > bySender[m.sender_id].created_at) bySender[m.sender_id] = m; });
     for (const sid in bySender) { const u = module.exports.userById(Number(sid)); if (!u) continue;
       out.push({ type:'message', actor: actorOf(u), text: `${u.name} sent you a message.`, ts: bySender[sid].created_at, unread: true }); }
+    // Horns in tribes you're a member of, last 6 hours, not from yourself
+    const myTribeIds = new Set(data.tribeMembers.filter(m => m.user_id === viewerId).map(m => m.tribe_id));
+    const sixHoursAgo = Date.now() - 6 * 3600 * 1000;
+    data.posts
+      .filter(p => p.type === 'horn' && p.user_id !== viewerId && myTribeIds.has(p.tribe_id) && p.created_at > sixHoursAgo && isLive(p))
+      .forEach(p => {
+        const u = module.exports.userById(p.user_id); if (!u) return;
+        const t = data.tribes.find(x => x.id === p.tribe_id); if (!t) return;
+        out.push({ type:'horn', actor: actorOf(u), text: `${u.name} sounded the Horn in ${t.name}.`, slug: t.slug, ts: p.created_at, unread: true });
+      });
+    // Votes on YOUR polls (count latest voter per poll)
+    data.posts
+      .filter(p => p.type === 'poll' && p.user_id === viewerId && Array.isArray(p.options))
+      .forEach(p => {
+        const t = data.tribes.find(x => x.id === p.tribe_id);
+        const latestVoter = p.options.flatMap(o => (o.voters || []).map(v => ({ uid: v, optionText: o.text })))
+          .filter(v => v.uid !== viewerId)
+          .slice(-1)[0];
+        if (!latestVoter || !t) return;
+        const u = module.exports.userById(latestVoter.uid); if (!u) return;
+        const totalVotes = p.options.reduce((s, o) => s + (o.voters ? o.voters.length : 0), 0);
+        out.push({ type:'vote', actor: actorOf(u), text: `${u.name} voted on your poll in ${t.name} — ${totalVotes} vote${totalVotes===1?'':'s'} so far.`, slug: t.slug, ts: p.created_at, unread: true });
+      });
     return out.sort((a,b)=>b.ts-a.ts).map(n => ({ ...n, ago: ago(n.ts) })).slice(0, 30);
   },
 };
