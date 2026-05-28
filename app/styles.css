@@ -12,18 +12,17 @@
 }
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{height:100%}
-body{font-family:'Space Grotesk',-apple-system,sans-serif;background:#dcd6ca;color:var(--ink);
-  -webkit-font-smoothing:antialiased;display:grid;place-items:center;min-height:100vh;padding:24px;overflow:auto}
+body{font-family:'Space Grotesk',-apple-system,sans-serif;background:var(--bg);color:var(--ink);
+  -webkit-font-smoothing:antialiased;height:100vh;height:100dvh;overflow:hidden;letter-spacing:-0.012em;line-height:1.45;font-weight:400}
 
-/* phone frame */
-.device{width:390px;height:844px;position:relative;overflow:hidden;background:var(--bg);
-  border-radius:30px;box-shadow:0 24px 70px rgba(20,19,15,.28);letter-spacing:-0.012em;line-height:1.45;font-weight:400}
+/* responsive app shell — phone-like on mobile, full-bleed webapp on desktop */
+.device{width:100%;height:100vh;height:100dvh;position:relative;overflow:hidden;background:var(--bg)}
 #stage{width:100%;height:100%;position:relative}
 #stage>.app{position:absolute;inset:0;animation:fade .18s ease}
 @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 
 /* layout */
-.app{display:flex;flex-direction:column;height:844px;position:relative;background:var(--bg)}
+.app{display:flex;flex-direction:column;height:100%;position:relative;background:var(--bg)}
 .scroll{flex:1;overflow-y:auto;overflow-x:hidden;padding:0 20px;scrollbar-width:none}
 .scroll::-webkit-scrollbar{display:none}
 .topbar{height:58px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 18px;border-bottom:1px solid var(--ink);background:var(--bg)}
@@ -100,7 +99,7 @@ body{font-family:'Space Grotesk',-apple-system,sans-serif;background:#dcd6ca;col
 .pill-count{font-size:10px;background:var(--accent);color:var(--accent-ink);border-radius:var(--r-xs);padding:4px 8px;font-weight:600;text-transform:uppercase;letter-spacing:.04em}
 i.ph{line-height:1;display:inline-block}
 /* welcome screen scoped (was inline in fragment) */
-.w{display:flex;flex-direction:column;height:844px;padding:64px 28px 36px}
+.w{display:flex;flex-direction:column;height:100%;padding:64px 28px 36px}
 .w .top{display:flex;justify-content:center;margin-bottom:auto}
 .w h1{font-weight:700;font-size:42px;line-height:1.02;letter-spacing:-.04em;margin:14px 0 18px}
 .w h1 b{font-weight:700;color:var(--accent)}
@@ -136,3 +135,25 @@ i.ph{line-height:1;display:inline-block}
 @keyframes appfade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(255,90,31,.5)}55%{box-shadow:0 0 0 5px rgba(255,90,31,0)}}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.001ms!important;transition-duration:.001ms!important}}
+
+/* ---- Desktop responsive — constrain content to a readable column, no phone frame ---- */
+@media (min-width:760px){
+  .topbar{padding-left:max(24px,calc((100vw - 880px)/2));padding-right:max(24px,calc((100vw - 880px)/2));height:64px}
+  .topbar .title{font-size:20px}
+  .scroll{padding-left:max(24px,calc((100vw - 880px)/2));padding-right:max(24px,calc((100vw - 880px)/2))}
+  .tabbar{padding-left:max(16px,calc((100vw - 880px)/2));padding-right:max(16px,calc((100vw - 880px)/2));height:78px}
+  .tabbar a{font-size:10px}
+  .tabbar a i{font-size:24px}
+  .has-tabbar .scroll{padding-bottom:96px}
+  .w{max-width:760px;margin:0 auto;padding:88px 40px 48px}
+  .w h1{font-size:54px}
+  .w .lede{max-width:520px;font-size:17px}
+  .h-xl{font-size:42px}
+  .h-lg{font-size:28px}
+  .bubble{max-width:520px}
+}
+@media (min-width:1200px){
+  .topbar{padding-left:max(32px,calc((100vw - 1080px)/2));padding-right:max(32px,calc((100vw - 1080px)/2))}
+  .scroll{padding-left:max(32px,calc((100vw - 1080px)/2));padding-right:max(32px,calc((100vw - 1080px)/2))}
+  .tabbar{padding-left:max(16px,calc((100vw - 1080px)/2));padding-right:max(16px,calc((100vw - 1080px)/2))}
+}

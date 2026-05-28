@@ -4,16 +4,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Tribes</title>
-<script>
-  /* on the live domain, route desktop browsers to the desktop build; localhost dev stays as-is. add ?m=1 to force mobile. */
-  (function(){
-    var local = ['localhost','127.0.0.1'].indexOf(location.hostname) >= 0;
-    var forceMobile = new URLSearchParams(location.search).get('m') === '1';
-    if(!local && !forceMobile && window.matchMedia('(min-width:1024px)').matches){
-      location.replace('desktop.html' + location.hash);
-    }
-  })();
-</script>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
 <link rel="stylesheet" href="styles.css">
