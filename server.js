@@ -169,7 +169,28 @@ app.post('/api/conversations/:userId/messages', requireAuth, (req, res) => {
 });
 app.get('/api/notifications', requireAuth, (req, res) => res.json({ notifications: db.notifications(req.user.id) }));
 
+// ---- zen mode (account freeze) ----
+app.post('/api/me/zen', requireAuth, (req, res) => {
+  const on = !!(req.body && req.body.on);
+  db.setZen(req.user.id, on);
+  res.json({ zen: on });
+});
+
+// ---- report / flag ----
+app.post('/api/report', requireAuth, (req, res) => {
+  const { targetType, targetId, reason } = req.body || {};
+  const r = db.createReport(req.user.id, targetType, targetId, reason);
+  if (!r) return res.status(400).json({ error: 'Invalid report target' });
+  res.json({ ok: true, id: r.id });
+});
+
 app.get('/api/health', (_req, res) => res.json({ ok: true, ts: Date.now() }));
+
+// ---- shareable tribe links: /t/<slug> redirects into the SPA ----
+app.get('/t/:slug', (req, res) => {
+  const slug = String(req.params.slug || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
+  res.redirect(302, '/#tribe/' + encodeURIComponent(slug));
+});
 
 // ---- static front-end ----
 app.use(express.static(path.join(__dirname, 'app'), { extensions: [] }));

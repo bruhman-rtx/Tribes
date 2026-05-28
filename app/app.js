@@ -41,6 +41,8 @@ const API = {
   conversation:(id)=>getJSON('/api/conversations/'+id),
   sendMessage:(id,body)=>post('/api/conversations/'+id+'/messages',{body}),
   notifications:()=>getJSON('/api/notifications'),
+  setZen:(on)=>post('/api/me/zen',{on}),
+  report:(targetType,targetId,reason)=>post('/api/report',{targetType,targetId,reason}),
 };
 const STATE = { user:null, interests:[], interestIds:[], catalog:null, selected:new Set(), currentTribe:null, currentProfile:null, currentChat:null, matchQueue:null, matchIdx:0 };
 
@@ -59,6 +61,7 @@ async function render(){
   stage.innerHTML = await frag(id);
   await wire(id);
   const sc = stage.querySelector('.scroll'); if(sc) sc.scrollTop = 0;
+  saveRoute();
 }
 function go(id){ stack.push(id); render(); }
 function back(){ if(stack.length>1) stack.pop(); render(); }
@@ -83,6 +86,44 @@ async function updateChatsBadge(){
 function showErr(msg){ let e=stage.querySelector('.formerr'); if(!e){ const a=stage.querySelector('.btn-primary'); if(!a)return; e=document.createElement('div'); e.className='formerr'; e.style.cssText='color:var(--accent-dark);font-size:13px;text-align:center;margin-top:12px;font-weight:600'; a.insertAdjacentElement('afterend',e);} e.textContent=msg; }
 function clearErr(){ stage.querySelector('.formerr')?.remove(); }
 function busy(btn,b){ if(!btn)return; btn.style.opacity=b?'.55':''; btn.style.pointerEvents=b?'none':''; }
+
+// ---- custom modal / toast (no native alert/confirm/prompt) ----
+function modal(html){
+  const wrap=document.createElement('div'); wrap.className='tx-modal';
+  wrap.style.cssText='position:fixed;inset:0;background:rgba(20,19,15,.45);display:grid;place-items:center;z-index:200;animation:appfade .14s ease';
+  wrap.innerHTML=`<div style="background:var(--bg);border:1.5px solid var(--ink);border-radius:10px;padding:20px;width:min(360px,86vw);box-shadow:0 24px 70px rgba(20,19,15,.3)">${html}</div>`;
+  document.body.appendChild(wrap);
+  const close=()=>wrap.remove();
+  wrap.addEventListener('click',e=>{ if(e.target===wrap) close(); });
+  return { el:wrap, close };
+}
+function toast(msg){
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;left:50%;bottom:32px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:11px 18px;border-radius:6px;font-size:13px;font-weight:600;z-index:300;animation:appfade .14s ease;letter-spacing:-0.01em';
+  t.textContent=msg; document.body.appendChild(t);
+  setTimeout(()=>t.remove(),2200);
+}
+async function reportFlow(targetType, targetId){
+  const m=modal(`<div class="h-md" style="margin-bottom:6px">Report this ${targetType}?</div><div class="muted" style="font-size:13px;line-height:1.5;margin-bottom:14px">A moderator will review it. Optional: tell us why.</div><textarea class="input" id="rrz" rows="3" placeholder="Reason (optional)" style="font-size:14px;resize:none"></textarea><div style="display:flex;gap:8px;margin-top:14px"><button class="btn btn-ghost" data-cancel style="flex:1">Cancel</button><button class="btn btn-primary" data-send style="flex:1">Send report</button></div>`);
+  m.el.querySelector('[data-cancel]').addEventListener('click', m.close);
+  m.el.querySelector('[data-send]').addEventListener('click', async ()=>{
+    const reason=m.el.querySelector('#rrz').value.trim();
+    try{ await API.report(targetType, targetId, reason); m.close(); toast('Report sent. Thanks.'); }
+    catch{ m.close(); toast('Could not send report.'); }
+  });
+}
+
+// ---- local session recovery: persist last route to localStorage ----
+const NAV_KEY='tribes.lastRoute';
+function saveRoute(){
+  try { localStorage.setItem(NAV_KEY, JSON.stringify({
+    stack, currentTribe: STATE.currentTribe, currentProfile: STATE.currentProfile, currentChat: STATE.currentChat,
+  })); } catch {}
+}
+function loadRoute(){
+  try { return JSON.parse(localStorage.getItem(NAV_KEY) || 'null'); } catch { return null; }
+}
+function clearRoute(){ try { localStorage.removeItem(NAV_KEY); } catch {} }
 
 // ---------- hydration: interests / me ----------
 async function hydrateInterests(){
@@ -116,12 +157,34 @@ async function hydrateMe(){
   let mt={tribes:[]}; try{ mt=await API.myTribes()||mt; }catch{}
   const tribes=mt.tribes||[];
   const stats=stage.querySelectorAll('.stat b'); if(stats[0])stats[0].textContent=STATE.interests.length; if(stats[1])stats[1].textContent=tribes.length;
-  const sc=stage.querySelector('.scroll'); sc.querySelectorAll('.row').forEach(r=>r.remove());
+  const sc=stage.querySelector('.scroll');
+  // Clear any previously appended dynamic content (tribes list, "no tribes" line, account block) so re-hydration doesn't duplicate
+  sc.querySelectorAll('[data-dyn-me]').forEach(n=>n.remove());
+  sc.querySelectorAll('.row').forEach(r=>r.remove());
   const secs=sc.querySelectorAll('.sec'); const tribesSec=secs[secs.length-1];
   const rowHtml=t=>`<div class="row" data-slug="${t.slug}"><div class="mono s ${t.tone}">${t.mono}</div><div class="grow"><div class="nm">${esc(t.name)}</div><div class="sub">${num(t.members)} members</div></div><i class="ph ph-caret-right soft"></i></div>`;
-  tribesSec && tribesSec.insertAdjacentHTML('afterend', tribes.length?tribes.map(rowHtml).join(''):'<div class="muted" style="font-size:14px;padding:8px 0">No tribes yet — join one from Discover.</div>');
+  const tribeListHtml = tribes.length ? tribes.map(rowHtml).join('') : '<div class="muted" data-dyn-me style="font-size:14px;padding:8px 0">No tribes yet — join one from Discover.</div>';
+  if(tribesSec){
+    const wrap = document.createElement('div'); wrap.setAttribute('data-dyn-me',''); wrap.innerHTML = tribeListHtml;
+    tribesSec.insertAdjacentElement('afterend', wrap);
+  }
   sc.querySelectorAll('[data-slug]').forEach(el=>el.addEventListener('click',()=>goTribe(el.dataset.slug)));
-  on('.icon-btn', async ()=>{ try{await API.signout();}catch{} STATE.user=null;STATE.interests=[];STATE.interestIds=[]; stack=['01_welcome']; render(); });
+  // Zen mode toggle row + signout — append a single, replaceable Account block
+  const zenOn = !!STATE.user?.zen;
+  const acct = document.createElement('div');
+  acct.setAttribute('data-dyn-me','');
+  acct.innerHTML = `<div class="sec" style="margin-top:24px"><h2>account</h2></div>`+
+    `<div class="row" data-zen-toggle style="cursor:pointer"><div class="grow"><div class="nm">Zen mode</div><div class="sub">${zenOn?'You\'re hidden from Match. Your chats stay open.':'Take a break — hide from Match without leaving.'}</div></div><div data-zen-pill class="chip ${zenOn?'on':''}" style="cursor:pointer;pointer-events:none">${zenOn?'On':'Off'}</div></div>`+
+    `<div class="row" data-signout style="cursor:pointer"><div class="grow"><div class="nm" style="color:var(--accent-dark)">Sign out</div></div><i class="ph ph-sign-out soft"></i></div>`;
+  sc.appendChild(acct);
+  sc.querySelector('[data-zen-toggle]')?.addEventListener('click', async ()=>{
+    const next=!STATE.user.zen;
+    try { await API.setZen(next); STATE.user.zen=next; hydrateMe(); toast(next?'Zen mode on. Hidden from Match.':'Zen mode off. Back in the queue.'); } catch { toast('Could not update.'); }
+  });
+  sc.querySelector('[data-signout]')?.addEventListener('click', async ()=>{
+    try{await API.signout();}catch{} clearRoute(); STATE.user=null;STATE.interests=[];STATE.interestIds=[]; stack=['01_welcome']; render();
+  });
+  on('.icon-btn', ()=>{ const r=sc.querySelector('[data-zen-toggle]'); if(r) r.scrollIntoView({behavior:'smooth',block:'center'}); });
 }
 
 // ---------- hydration: tribes (Phase 2) ----------
@@ -166,13 +229,13 @@ async function hydrateTribe(){
   const res = slug ? await API.tribe(slug).catch(()=>null) : null;
   const t = res && res.tribe;
   if(!t){ sc.innerHTML='<div class="card" style="margin-top:20px"><div class="muted">Tribe not found.</div></div>'; return; }
-  const postHtml=p=>`<div style="padding:14px 0;border-bottom:1px solid var(--line)"><div style="display:flex;align-items:center;gap:11px"><div class="mono s ${p.author.tone}">${p.author.mono}</div><div><div class="nm" style="font-size:14px">${esc(p.author.name)}</div><div class="sub">${p.ago}</div></div></div><p style="font-size:14px;line-height:1.5;margin:10px 0 0">${esc(p.body)}</p></div>`;
+  const postHtml=p=>`<div style="padding:14px 0;border-bottom:1px solid var(--line)"><div style="display:flex;align-items:center;gap:11px"><div class="mono s ${p.author.tone}">${p.author.mono}</div><div class="grow"><div class="nm" style="font-size:14px">${esc(p.author.name)}</div><div class="sub">${p.ago}</div></div><button class="icon-btn" data-report-post="${p.id}" title="Report this post" style="width:30px;height:30px;font-size:15px;color:var(--ink-soft)"><i class="ph ph-flag"></i></button></div><p style="font-size:14px;line-height:1.5;margin:10px 0 0">${esc(p.body)}</p></div>`;
   const memberHtml=m=>`<div class="row"><div class="mono s ${m.tone}">${m.mono}</div><div class="grow"><div class="nm">${esc(m.name)}</div><div class="sub">${esc(m.handle||'')}</div></div></div>`;
   const postsPane=()=> t.posts.length? t.posts.map(postHtml).join('') : '<div class="muted" style="padding:18px 0;font-size:14px">No posts yet — be the first.</div>';
   sc.innerHTML =
     `<div style="display:flex;align-items:center;gap:15px;padding-top:4px"><div class="mono xl ${t.tone}">${t.mono}</div><div><h1 class="h-lg">${esc(t.name)}</h1><div class="muted" style="font-size:13px;margin-top:3px">${num(t.members)} members · ${t.online} online</div></div></div>`+
     `<p class="muted" style="font-size:14px;line-height:1.5;margin:16px 0">${esc(t.description)}</p>`+
-    `<div style="display:flex;gap:10px"><button class="btn ${t.joined?'btn-soft':'btn-primary'}" style="flex:1" data-toggle>${t.joined?'Leave tribe':'Join tribe'}</button>${t.joined?'<button class="btn btn-ghost" data-compose><i class="ph ph-pencil-simple-line"></i></button>':''}</div>`+
+    `<div style="display:flex;gap:10px"><button class="btn ${t.joined?'btn-soft':'btn-primary'}" style="flex:1" data-toggle>${t.joined?'Leave tribe':'Join tribe'}</button>${t.joined?'<button class="btn btn-ghost" data-compose title="New post"><i class="ph ph-pencil-simple-line"></i></button>':''}<button class="btn btn-ghost" data-share title="Share tribe"><i class="ph ph-share-network"></i></button></div>`+
     `<div class="tabs" style="margin-top:20px"><span class="tab on" data-tab="posts">posts</span><span class="tab" data-tab="members">members</span><span class="tab" data-tab="about">about</span></div>`+
     `<div data-pane style="padding-top:6px">${postsPane()}</div>`;
   const pane=sc.querySelector('[data-pane]');
@@ -185,6 +248,15 @@ async function hydrateTribe(){
   }));
   sc.querySelector('[data-toggle]')?.addEventListener('click', async e=>{ e.currentTarget.style.pointerEvents='none'; try{ t.joined?await API.leave(slug):await API.join(slug);}catch{} hydrateTribe(); });
   sc.querySelector('[data-compose]')?.addEventListener('click', ()=>go('15_create'));
+  sc.querySelector('[data-share]')?.addEventListener('click', async ()=>{
+    const url=`${location.origin}/t/${slug}`;
+    const text=`Join my tribe on Tribes: ${url}`;
+    try { await navigator.clipboard.writeText(text); toast('Invite copied to clipboard.'); }
+    catch { toast(url); }
+  });
+  sc.querySelectorAll('[data-report-post]').forEach(b=>b.addEventListener('click', e=>{
+    e.stopPropagation(); reportFlow('post', Number(b.dataset.reportPost));
+  }));
 }
 
 async function hydrateCreate(){
@@ -252,10 +324,11 @@ async function hydrateProfile(){
   const shared=p.shared.map(x=>`<span class="tag shared"><i class="ph ph-check"></i>${esc(x)}</span>`).join('');
   const also=p.also.slice(0,8).map(x=>`<span class="tag">${esc(x)}</span>`).join('');
   sc.innerHTML =
-    `<div style="display:flex;flex-direction:column;align-items:center;text-align:center;padding-top:4px"><div class="mono xl ${p.tone}" style="width:104px;height:104px;font-size:42px">${p.mono}</div><h1 class="h-lg" style="margin-top:14px">${esc(p.name)}${p.age?', '+p.age:''}</h1><div class="muted" style="font-size:13px;margin-top:4px;display:flex;align-items:center;gap:5px"><i class="ph ph-map-pin"></i>${p.km} km away${p.tribes.length?' · '+p.tribes.length+' tribes':''}</div></div>`+
+    `<div style="display:flex;flex-direction:column;align-items:center;text-align:center;padding-top:4px;position:relative"><div class="mono xl ${p.tone}" style="width:104px;height:104px;font-size:42px">${p.mono}</div><h1 class="h-lg" style="margin-top:14px">${esc(p.name)}${p.age?', '+p.age:''}</h1><div class="muted" style="font-size:13px;margin-top:4px;display:flex;align-items:center;gap:5px"><i class="ph ph-map-pin"></i>${p.km} km away${p.tribes.length?' · '+p.tribes.length+' tribes':''}</div><button class="icon-btn" data-report-user="${p.id}" title="Report user" style="position:absolute;top:0;right:0;color:var(--ink-soft);width:34px;height:34px;font-size:17px"><i class="ph ph-flag"></i></button></div>`+
     (p.shared.length?`<div class="card" style="margin-top:22px;background:var(--acc-50);border-color:var(--accent)"><div class="eyebrow" style="margin-bottom:10px">you both love</div><div class="tags">${shared}</div></div>`:'')+
     (p.also.length?`<div class="sec"><h2>also into</h2></div><div class="tags">${also}</div>`:'')+
     (p.bio?`<div class="sec"><h2>about</h2></div><p class="muted" style="font-size:14px;line-height:1.55">${esc(p.bio)}</p>`:'');
+  sc.querySelector('[data-report-user]')?.addEventListener('click', e=>{ e.stopPropagation(); reportFlow('user', p.id); });
   const connectBtn=stage.querySelector('.btn-primary');
   if(connectBtn){
     const setConnected=()=>{ connectBtn.textContent='Connected'; connectBtn.classList.remove('btn-primary'); connectBtn.classList.add('btn-soft'); };
@@ -341,7 +414,27 @@ async function wire(id){
 window.jump = id => { stack=[id]; render(); document.getElementById('launcher')?.classList.remove('open'); };
 window.TRIBES_FILES = FILES;
 
+function parseTribeHash(){
+  const h=String(location.hash||'');
+  const m=h.match(/^#tribe\/([a-z0-9-]+)/i);
+  return m ? m[1].toLowerCase() : null;
+}
 (async function boot(){
   try { const me=await API.me(); if(me&&me.user){ STATE.user=me.user; STATE.interests=me.interests||[]; STATE.interestIds=me.interestIds||[]; stack=['05_discover']; } } catch {}
+  // 1) /t/<slug> redirected here — open that tribe (overrides saved route)
+  const hashSlug=parseTribeHash();
+  if(hashSlug && STATE.user){
+    STATE.currentTribe=hashSlug; stack=['05_discover','07_tribe'];
+    history.replaceState(null,'',location.pathname);
+  } else if(STATE.user){
+    // 2) restore the last route from localStorage (only when signed in)
+    const saved=loadRoute();
+    if(saved && Array.isArray(saved.stack) && saved.stack.length && FILES[saved.stack[saved.stack.length-1]]){
+      stack=saved.stack;
+      if(saved.currentTribe) STATE.currentTribe=saved.currentTribe;
+      if(saved.currentProfile) STATE.currentProfile=saved.currentProfile;
+      if(saved.currentChat) STATE.currentChat=saved.currentChat;
+    }
+  }
   render();
 })();

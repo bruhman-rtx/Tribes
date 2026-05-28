@@ -17,15 +17,17 @@ const CATALOG = {
 
 function blank() {
   return {
-    seq: { users: 0, interests: 0, tribes: 0, posts: 0, connections: 0, conversations: 0, messages: 0, notifications: 0 },
+    seq: { users: 0, interests: 0, tribes: 0, posts: 0, connections: 0, conversations: 0, messages: 0, notifications: 0, reports: 0 },
     users: [], interests: [], userInterests: [], sessions: {},
     tribes: [], tribeMembers: [], posts: [], connections: [], conversations: [], messages: [], notifications: [],
+    reports: [],
   };
 }
 
 let data;
 try { data = JSON.parse(fs.readFileSync(FILE, 'utf8')); } catch { data = blank(); }
 for (const [k, v] of Object.entries(blank())) if (data[k] === undefined) data[k] = v;
+if (!data.seq.reports) data.seq.reports = 0;
 
 let writeTimer = null;
 function persist() {
@@ -92,7 +94,7 @@ function seedWorld() {
 
 // ---- helpers ----
 function hashStr(s) { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return h; }
-function publicUser(u) { if (!u) return null; return { id:u.id, name:u.name, email:u.email, handle:u.handle, age:u.age, city:u.city, bio:u.bio, tone:u.tone }; }
+function publicUser(u) { if (!u) return null; return { id:u.id, name:u.name, email:u.email, handle:u.handle, age:u.age, city:u.city, bio:u.bio, tone:u.tone, zen: !!u.zen }; }
 function ago(ms) {
   const s = Math.max(1, Math.floor((Date.now() - ms) / 1000));
   if (s < 60) return 'just now';
@@ -133,11 +135,57 @@ function getOrCreateConv(aId, bId) {
   if (!c) { c = { id: ++data.seq.conversations, user_a: lo, user_b: hi, created_at: Date.now() }; data.conversations.push(c); }
   return c;
 }
+const ICEBREAKERS = {
+  'Trail Running': ['Hit any good ridge lines lately?', 'What\'s your current weekly mileage?', 'Any races on the calendar?'],
+  'Bouldering': ['Indoor or outdoor mostly?', 'What grade are you projecting right now?', 'Best crag you\'ve been to this year?'],
+  'Yoga': ['Studio person or home flow?', 'Vinyasa or Ashtanga?', 'Any teacher you\'re obsessed with right now?'],
+  'Cycling': ['Road, gravel, or both?', 'Longest ride this year?', 'Favourite loop?'],
+  'Surfing': ['Where do you usually paddle out?', 'What board are you riding these days?', 'Best wave you\'ve caught lately?'],
+  'Climbing': ['Trad, sport, or boulder?', 'What route\'s living in your head right now?', 'Crag or gym this week?'],
+  'Swimming': ['Pool laps or open water?', 'What\'s your stroke focus right now?', 'Any meets coming up?'],
+  'Film Photography': ['What stock are you shooting these days?', 'SLR or rangefinder person?', 'Last roll you developed — any keepers?'],
+  'Ceramics': ['Wheel or hand-build?', 'What glaze are you obsessed with right now?', 'Working on anything in the studio this week?'],
+  'Typography': ['What\'s the last typeface that floored you?', 'Designing anything letter-y right now?', 'Serif or sans person — and why?'],
+  'Illustration': ['Digital or analog?', 'What are you drawing this week?', 'Anyone whose work you\'re studying right now?'],
+  'Vinyl': ['What\'s spinning right now?', 'Last record that hit you hard?', 'Crate-digging anywhere good?'],
+  'Poetry': ['Reading anyone good right now?', 'Writing or just reading these days?', 'Last line that stuck with you?'],
+  'Printmaking': ['Screen, lino, or letterpress?', 'Working on anything right now?', 'Any presses you\'re into?'],
+  'Sketching': ['Pen or pencil person?', 'What\'s in your sketchbook this week?', 'Drawing from life or imagination lately?'],
+  'Jazz': ['Any new records on rotation?', 'Last live set you caught?', 'Favourite era?'],
+  'Techno': ['Last set that floored you?', 'What\'s in heavy rotation this month?', 'Any nights you keep going back to?'],
+  'Lo-fi Beats': ['What are you putting on to work?', 'Any producers you\'re into right now?', 'Make beats yourself?'],
+  'Indie': ['Last record you couldn\'t stop playing?', 'Any new bands worth knowing?', 'Best show you\'ve been to this year?'],
+  'Classical': ['Composer you keep coming back to?', 'Last live performance?', 'Any recordings you swear by?'],
+  'Hip Hop': ['Last album that hit?', 'Favourite era?', 'Anyone underrated you\'re bumping?'],
+  'Ambient': ['What\'s good for working?', 'Any labels you trust?', 'Best record for late nights?'],
+  'Indie Games': ['What\'s on your Steam deck right now?', 'Last one you finished?', 'Any devs you follow?'],
+  'Tabletop': ['Heavy euro or party games?', 'What\'s hitting the table this week?', 'Any campaigns going?'],
+  'Chess': ['What\'s your rating roughly?', 'Online or OTB?', 'Favourite opening?'],
+  'Board Game Cafes': ['Any favourites in your city?', 'What\'s the last game you discovered there?', 'Solo dropper or group person?'],
+  'Puzzles': ['Cryptic, jigsaw, or logic?', 'Anyone\'s puzzles you swear by?', 'Working on anything right now?'],
+  'Cold Brew': ['Where\'s the best cup near you?', 'Make it at home?', 'What ratio do you swear by?'],
+  'Natural Wine': ['Any bottles you can\'t shut up about right now?', 'Favourite importer?', 'Best bar near you?'],
+  'Ramen': ['Where\'s the best bowl in your city?', 'Tonkotsu, shoyu, or shio person?', 'Made it at home yet?'],
+  'Baking': ['What\'s in your oven this week?', 'Bread or sweet person?', 'Any recipe you keep coming back to?'],
+  'Street Food': ['Best thing you\'ve eaten this month?', 'Favourite city for it?', 'Any spots near you worth knowing?'],
+  'Tea': ['What are you drinking right now?', 'Loose leaf or bags?', 'Any vendors you trust?'],
+};
+function smartOpener(sharedNames) {
+  for (const name of sharedNames) {
+    const bank = ICEBREAKERS[name];
+    if (bank && bank.length) {
+      const q = bank[Math.floor(Math.random() * bank.length)];
+      return `Hey — saw we're both into ${name}. ${q}`;
+    }
+  }
+  if (sharedNames.length) return `Hey! Saw we're both into ${sharedNames[0]} — how'd you get into it?`;
+  return `Hey! We just matched — what have you been into lately?`;
+}
 function seedOpener(conv, fromId, viewerId) {
   if (data.messages.some(m => m.conversation_id === conv.id)) return;
   const u = module.exports.userById(fromId); if (!u || !u.seed) return;
   const shared = userCard(viewerId, u).shared;
-  const body = shared.length ? `Hey! Saw we're both into ${shared[0]} — how'd you get into it?` : `Hey! We just matched — what have you been into lately?`;
+  const body = smartOpener(shared);
   data.messages.push({ id: ++data.seq.messages, conversation_id: conv.id, sender_id: fromId, body, created_at: Date.now() - 60000, read_at: null });
 }
 // a seed user replies a few seconds after you message them (makes chat feel live + demoes polling)
@@ -203,10 +251,21 @@ module.exports = {
   // ---- match engine (Phase 3) ----
   matchCandidates(viewerId, limit = 20) {
     const acted = actedTargets(viewerId);
-    return data.users.filter(u => u.id !== viewerId && !acted.has(u.id))
+    return data.users.filter(u => u.id !== viewerId && !acted.has(u.id) && !u.zen)
       .map(u => userCard(viewerId, u))
       .sort((a, b) => (b.sharedCount - a.sharedCount) || (b.also.length - a.also.length))
       .slice(0, limit);
+  },
+  setZen(uid, on) {
+    const u = data.users.find(x => x.id === uid); if (!u) return false;
+    u.zen = !!on; persist(); return true;
+  },
+  createReport(reporterId, targetType, targetId, reason) {
+    if (!['post', 'user'].includes(targetType)) return null;
+    const tid = Number(targetId); if (!Number.isInteger(tid)) return null;
+    const r = { id: ++data.seq.reports, reporter_id: reporterId, target_type: targetType, target_id: tid,
+      reason: String(reason || '').slice(0, 500), created_at: Date.now(), resolved: false };
+    data.reports.push(r); persist(); return r;
   },
   recordConnection(viewerId, targetId, status) {
     targetId = Number(targetId);
