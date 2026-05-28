@@ -232,9 +232,26 @@ async function hydrateDiscover(){
 async function hydrateSearch(){
   const sc=stage.querySelector('.scroll'); if(!sc) return;
   const res=await API.tribes().catch(()=>null); const tribes=res?.tribes||[];
-  sc.querySelectorAll('.row').forEach(r=>r.remove());
-  sc.insertAdjacentHTML('beforeend', tribes.map(tribeRow).join(''));
-  wireTribeRows(sc, hydrateSearch);
+  const results=sc.querySelector('[data-results]');
+  const input=sc.querySelector('#search-input');
+  let scope='all'; let query='';
+  const render=()=>{
+    const q=query.trim().toLowerCase();
+    let list=tribes;
+    if(scope==='joined') list=list.filter(t=>t.joined);
+    if(q) list=list.filter(t=>t.name.toLowerCase().includes(q)||(t.description||'').toLowerCase().includes(q));
+    results.innerHTML = list.length
+      ? list.map(tribeRow).join('')
+      : `<div class="muted" style="font-size:14px;padding:28px 4px;text-align:center;line-height:1.5">No tribes match${q?' "'+esc(query)+'"':''}.</div>`;
+    wireTribeRows(results, render);
+  };
+  input && input.addEventListener('input', e=>{ query=e.target.value; render(); });
+  sc.querySelectorAll('[data-search-chips] [data-scope]').forEach(c=>c.addEventListener('click',()=>{
+    sc.querySelectorAll('[data-search-chips] [data-scope]').forEach(x=>x.classList.remove('on'));
+    c.classList.add('on'); scope=c.dataset.scope; render();
+  }));
+  render();
+  setTimeout(()=>input&&input.focus(), 80);
 }
 
 async function hydrateTribe(){
@@ -444,13 +461,61 @@ async function hydrateProfile(){
 }
 
 // ---------- hydration: messaging (Phase 4) ----------
+const isDesktop = () => window.matchMedia && window.matchMedia('(min-width:1024px)').matches;
 async function hydrateChats(){
   const sc=stage.querySelector('.scroll'); if(!sc) return;
   const r=await API.conversations().catch(()=>null); const list=r?.conversations||[];
   const row=c=>`<div class="row" data-uid="${c.id}"><div class="mono s ${c.tone}">${c.mono}</div><div class="grow"><div class="nm">${esc(c.name)}</div><div class="sub">${esc(c.preview)}</div></div><div style="text-align:right;flex:none"><div class="sub" style="margin:0">${c.ago}</div>${c.unread?'<span class="dot-unread" style="margin-top:6px;margin-left:auto"></span>':''}</div></div>`;
+
+  if(isDesktop()){
+    // Two-pane layout: list left, thread right
+    sc.style.cssText = 'flex:1;display:flex;padding:0;overflow:hidden;height:100%';
+    sc.innerHTML = `<div data-chat-list style="width:340px;border-right:1px solid var(--ink);overflow-y:auto;padding:18px;flex:none"><div class="search" style="margin-bottom:10px"><i class="ph ph-magnifying-glass"></i>Search chats</div><div data-list-rows>${list.length?list.map(row).join(''):'<div class="muted" style="font-size:14px;padding:28px 4px;text-align:center;line-height:1.5">No chats yet — connect with a match and say hi.</div>'}</div></div><div data-chat-pane style="flex:1;display:flex;flex-direction:column;background:var(--bg);min-width:0"></div>`;
+    const listRows = sc.querySelector('[data-list-rows]');
+    const chatPane = sc.querySelector('[data-chat-pane]');
+    const showEmpty = ()=>{ chatPane.innerHTML = `<div style="flex:1;display:grid;place-items:center;text-align:center;color:var(--ink-soft);font-size:14px;padding:30px"><div><div style="font-size:52px;color:var(--ink-soft);line-height:1"><i class="ph ph-chat-circle"></i></div><div style="margin-top:16px;font-weight:500">Pick a chat to start.</div></div></div>`; };
+    const selectChat = async (uid, rowEl)=>{
+      listRows.querySelectorAll('.row').forEach(r=>{ r.style.background=''; r.style.borderRadius=''; });
+      if(rowEl){ rowEl.style.background='var(--acc-50)'; rowEl.style.borderRadius='6px'; }
+      STATE.currentChat = Number(uid);
+      await renderChatPaneInto(chatPane, uid);
+    };
+    listRows.querySelectorAll('[data-uid]').forEach(el=>el.addEventListener('click', ()=>selectChat(el.dataset.uid, el)));
+    if(STATE.currentChat){
+      const el = listRows.querySelector(`[data-uid="${STATE.currentChat}"]`);
+      if(el){ selectChat(STATE.currentChat, el); return; }
+    }
+    showEmpty();
+    return;
+  }
+
+  // Mobile: single column, click navigates to thread route
   sc.innerHTML = `<div class="search"><i class="ph ph-magnifying-glass"></i>Search chats</div>` +
     (list.length ? `<div style="margin-top:8px">${list.map(row).join('')}</div>` : `<div class="muted" style="font-size:14px;padding:28px 4px;text-align:center;line-height:1.5">No chats yet — connect with a match and say hi.</div>`);
   sc.querySelectorAll('[data-uid]').forEach(el=>el.addEventListener('click',()=>goChat(el.dataset.uid)));
+}
+
+async function renderChatPaneInto(panel, otherUserId){
+  const c = await API.conversation(otherUserId).catch(()=>null);
+  if(!c){ panel.innerHTML = '<div class="muted" style="padding:20px">Conversation not found.</div>'; return; }
+  const bubbles = msgs => `<div class="daysep">today</div>` + msgs.map(m=>`<div class="bubble ${m.mine?'me':'them'}">${esc(m.body)}</div>`).join('');
+  panel.innerHTML = `<div style="height:64px;flex:none;display:flex;align-items:center;gap:14px;padding:0 28px;border-bottom:1px solid var(--ink);background:var(--bg)"><div class="mono s ${c.other.tone}">${c.other.mono}</div><div><div class="nm" style="font-size:15px">${esc(c.other.name)}</div><div style="font-size:11px;color:var(--accent-dark);letter-spacing:.04em;font-weight:600;text-transform:uppercase">Online</div></div></div><div data-thread style="flex:1;overflow-y:auto;padding:20px 28px;display:flex;flex-direction:column;scrollbar-width:none">${bubbles(c.messages)}</div><div style="flex:none;padding:14px 28px 22px;border-top:1px solid var(--line);background:var(--bg);display:flex;align-items:center;gap:10px"><input id="msgbox-d" placeholder="Message ${esc((c.other.name||'').split(' ')[0])}…" autocomplete="off" style="flex:1;padding:12px 18px;border-radius:999px;border:1.5px solid var(--ink);background:var(--surface);outline:none;font-size:15px;font-family:inherit;color:var(--ink)"><button class="btn btn-primary" data-send-d style="width:46px;height:46px;padding:0;border-radius:12px;display:grid;place-items:center"><i class="ph ph-paper-plane-right" style="font-size:18px"></i></button></div>`;
+  const thread = panel.querySelector('[data-thread]');
+  thread.scrollTop = thread.scrollHeight;
+  let lastCount = c.messages.length;
+  const send = async ()=>{
+    const mb = panel.querySelector('#msgbox-d'); const v=(mb?.value||'').trim(); if(!v) return; mb.value='';
+    thread.insertAdjacentHTML('beforeend', `<div class="bubble me">${esc(v)}</div>`); thread.scrollTop = thread.scrollHeight; lastCount++;
+    try { await API.sendMessage(otherUserId, v); } catch {}
+  };
+  panel.querySelector('[data-send-d]').addEventListener('click', send);
+  panel.querySelector('#msgbox-d').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); send(); } });
+  setPoll(async ()=>{
+    if(stack[stack.length-1] !== '12_chats') return;
+    const r = await API.conversation(otherUserId).catch(()=>null); if(!r) return;
+    if(r.messages.length !== lastCount){ lastCount = r.messages.length; thread.innerHTML = bubbles(r.messages); thread.scrollTop = thread.scrollHeight; }
+  }, 3000);
+  setTimeout(()=>panel.querySelector('#msgbox-d')?.focus(), 60);
 }
 
 async function hydrateChat(){
