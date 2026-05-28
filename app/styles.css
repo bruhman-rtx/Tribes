@@ -157,3 +157,43 @@ i.ph{line-height:1;display:inline-block}
   .scroll{padding-left:max(32px,calc((100vw - 1080px)/2));padding-right:max(32px,calc((100vw - 1080px)/2))}
   .tabbar{padding-left:max(16px,calc((100vw - 1080px)/2));padding-right:max(16px,calc((100vw - 1080px)/2))}
 }
+
+/* ---- Left rail nav (≥1024px) — replaces bottom tabbar on the 5 main nav screens ---- */
+@media (min-width:1024px){
+  .app.has-tabbar{padding-left:232px}
+  .app.has-tabbar .tabbar{
+    top:0;bottom:0;left:0;right:auto;width:232px;height:auto;
+    flex-direction:column;justify-content:flex-start;align-items:stretch;
+    padding:84px 16px 24px;
+    border-top:none;border-right:1px solid var(--ink);
+    background:var(--bg);
+  }
+  .app.has-tabbar .tabbar a{
+    flex-direction:row;justify-content:flex-start;align-items:center;
+    gap:14px;padding:11px 14px 11px 12px;font-size:13px;
+    text-transform:capitalize;letter-spacing:.01em;font-weight:500;
+    border-radius:8px;width:100%;
+  }
+  .app.has-tabbar .tabbar a i{font-size:20px;color:var(--ink-muted)}
+  .app.has-tabbar .tabbar a:hover{background:var(--fill);color:var(--ink)}
+  .app.has-tabbar .tabbar a:hover i{color:var(--ink);transform:none}
+  .app.has-tabbar .tabbar a.on{background:var(--acc-50);color:var(--accent-dark)}
+  .app.has-tabbar .tabbar a.on i{color:var(--accent)}
+  .app.has-tabbar .scroll{padding-bottom:24px}
+  /* Brand mark sits at top of rail */
+  .app.has-tabbar .tabbar::before{
+    content:"Tribes";
+    position:absolute;top:26px;left:24px;
+    font-weight:700;font-size:20px;letter-spacing:-0.03em;
+    color:var(--ink);
+  }
+  .app.has-tabbar .tabbar::after{
+    content:"";position:absolute;top:34px;left:96px;
+    width:8px;height:8px;border-radius:2px;background:var(--accent);
+  }
+  /* Rail owns the brand — topbar drops the duplicate */
+  .app.has-tabbar .topbar .brand{display:none}
+  /* Recompute the readable-column padding within the post-rail content area */
+  .app.has-tabbar .topbar{padding-left:max(24px,calc((100vw - 232px - 880px)/2));padding-right:max(24px,calc((100vw - 232px - 880px)/2))}
+  .app.has-tabbar .scroll{padding-left:max(24px,calc((100vw - 232px - 880px)/2));padding-right:max(24px,calc((100vw - 232px - 880px)/2))}
+}
