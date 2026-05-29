@@ -17,10 +17,10 @@ const CATALOG = {
 
 function blank() {
   return {
-    seq: { users: 0, interests: 0, tribes: 0, posts: 0, connections: 0, conversations: 0, messages: 0, notifications: 0, reports: 0 },
+    seq: { users: 0, interests: 0, tribes: 0, posts: 0, connections: 0, conversations: 0, messages: 0, notifications: 0, reports: 0, comments: 0 },
     users: [], interests: [], userInterests: [], sessions: {},
     tribes: [], tribeMembers: [], posts: [], connections: [], conversations: [], messages: [], notifications: [],
-    reports: [],
+    reports: [], comments: [],
   };
 }
 
@@ -28,6 +28,7 @@ let data;
 try { data = JSON.parse(fs.readFileSync(FILE, 'utf8')); } catch { data = blank(); }
 for (const [k, v] of Object.entries(blank())) if (data[k] === undefined) data[k] = v;
 if (!data.seq.reports) data.seq.reports = 0;
+if (!data.seq.comments) data.seq.comments = 0;
 
 let writeTimer = null;
 function persist() {
@@ -120,6 +121,9 @@ function postPublic(p, viewerId) {
     type: p.type || 'post',
     expires_at: p.expires_at || null,
     pinned_until: p.pinned_until || null,
+    commentCount: data.comments.filter(c => c.post_id === p.id).length,
+    reactions: (p.reactions || []).length,
+    reacted: viewerId ? (p.reactions || []).includes(viewerId) : false,
   };
   if (p.type === 'poll' && Array.isArray(p.options)) {
     const totalVotes = p.options.reduce((s, o) => s + (o.voters ? o.voters.length : 0), 0);
@@ -250,7 +254,7 @@ module.exports = {
   tribeBySlug(slug, viewerId) {
     const t = data.tribes.find(x => x.slug === slug); if (!t) return null;
     const pub = tribePublic(t, viewerId);
-    pub.members_list = data.tribeMembers.filter(m => m.tribe_id === t.id).map(m => { const u = data.users.find(x=>x.id===m.user_id)||{}; return { name:u.name, mono:(u.name||'?')[0].toLowerCase(), tone:u.tone||'t1', handle:u.handle }; });
+    pub.members_list = data.tribeMembers.filter(m => m.tribe_id === t.id).map(m => { const u = data.users.find(x=>x.id===m.user_id)||{}; return { id:u.id, name:u.name, mono:(u.name||'?')[0].toLowerCase(), tone:u.tone||'t1', handle:u.handle, you: u.id === viewerId }; });
     const allTribePosts = data.posts.filter(p => p.tribe_id === t.id);
     // Live horns (time-boxed, unexpired) surfaced separately at the top
     pub.horns = allTribePosts
@@ -338,6 +342,47 @@ module.exports = {
   unpinPost(uid, postId) {
     const p = data.posts.find(x => x.id === Number(postId)); if (!p || p.user_id !== uid) return false;
     p.pinned_until = null; persist(); return true;
+  },
+  deletePost(uid, postId) {
+    const id = Number(postId);
+    const p = data.posts.find(x => x.id === id);
+    if (!p || p.user_id !== uid) return false;
+    data.posts = data.posts.filter(x => x.id !== id);
+    data.comments = data.comments.filter(c => c.post_id !== id); // cascade
+    persist(); return true;
+  },
+  deleteComment(uid, commentId) {
+    const id = Number(commentId);
+    const c = data.comments.find(x => x.id === id);
+    if (!c || c.user_id !== uid) return false;
+    data.comments = data.comments.filter(x => x.id !== id);
+    persist(); return true;
+  },
+  toggleReaction(uid, postId) {
+    const p = data.posts.find(x => x.id === Number(postId)); if (!p) return null;
+    if (!Array.isArray(p.reactions)) p.reactions = [];
+    const i = p.reactions.indexOf(uid);
+    if (i >= 0) p.reactions.splice(i, 1); else p.reactions.push(uid);
+    persist();
+    return { reactions: p.reactions.length, reacted: p.reactions.includes(uid) };
+  },
+  createComment(uid, postId, body) {
+    const p = data.posts.find(x => x.id === Number(postId)); if (!p) return null;
+    const text = String(body || '').trim().slice(0, 500); if (!text) return null;
+    const c = { id: ++data.seq.comments, post_id: p.id, user_id: uid, body: text, created_at: Date.now() };
+    data.comments.push(c); persist();
+    return module.exports.commentPublic(c, uid);
+  },
+  commentPublic(c, viewerId) {
+    const u = data.users.find(x => x.id === c.user_id) || {};
+    return { id: c.id, body: c.body, ago: ago(c.created_at), mine: viewerId === c.user_id,
+      author: { id: u.id, name: u.name || 'Someone', mono: (u.name || '?')[0].toLowerCase(), tone: u.tone || 't1', handle: u.handle } };
+  },
+  listComments(postId, viewerId) {
+    const pid = Number(postId);
+    if (!data.posts.find(x => x.id === pid)) return null;
+    return data.comments.filter(c => c.post_id === pid).sort((a, b) => a.created_at - b.created_at)
+      .map(c => module.exports.commentPublic(c, viewerId));
   },
   discover(uid) {
     const mine = module.exports.userTribes(uid);
@@ -459,6 +504,18 @@ module.exports = {
         const totalVotes = p.options.reduce((s, o) => s + (o.voters ? o.voters.length : 0), 0);
         out.push({ type:'vote', actor: actorOf(u), text: `${u.name} voted on your poll in ${t.name} — ${totalVotes} vote${totalVotes===1?'':'s'} so far.`, slug: t.slug, ts: p.created_at, unread: true });
       });
+    // Comments on YOUR posts (latest commenter per post, not yourself)
+    const myPostIds = new Set(data.posts.filter(p => p.user_id === viewerId).map(p => p.id));
+    const byPost = {};
+    data.comments.filter(c => myPostIds.has(c.post_id) && c.user_id !== viewerId)
+      .forEach(c => { if (!byPost[c.post_id] || c.created_at > byPost[c.post_id].created_at) byPost[c.post_id] = c; });
+    for (const pid in byPost) {
+      const c = byPost[pid]; const u = module.exports.userById(c.user_id); if (!u) continue;
+      const p = data.posts.find(x => x.id === Number(pid)); if (!p) continue;
+      const t = data.tribes.find(x => x.id === p.tribe_id); if (!t) continue;
+      const total = data.comments.filter(x => x.post_id === p.id).length;
+      out.push({ type:'comment', actor: actorOf(u), text: `${u.name} replied to your post in ${t.name}${total > 1 ? ` — ${total} replies` : ''}.`, slug: t.slug, ts: c.created_at, unread: true });
+    }
     return out.sort((a,b)=>b.ts-a.ts).map(n => ({ ...n, ago: ago(n.ts) })).slice(0, 30);
   },
 };

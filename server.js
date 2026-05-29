@@ -167,6 +167,31 @@ app.post('/api/posts/:id/vote', requireAuth, (req, res) => {
   if (!post) return res.status(400).json({ error: 'Invalid vote' });
   res.json({ post });
 });
+app.post('/api/posts/:id/delete', requireAuth, (req, res) => {
+  if (!db.deletePost(req.user.id, req.params.id)) return res.status(403).json({ error: 'cannot delete' });
+  res.json({ ok: true });
+});
+app.post('/api/comments/:id/delete', requireAuth, (req, res) => {
+  if (!db.deleteComment(req.user.id, req.params.id)) return res.status(403).json({ error: 'cannot delete' });
+  res.json({ ok: true });
+});
+app.post('/api/posts/:id/react', requireAuth, (req, res) => {
+  const r = db.toggleReaction(req.user.id, req.params.id);
+  if (!r) return res.status(404).json({ error: 'post not found' });
+  res.json(r);
+});
+app.get('/api/posts/:id/comments', requireAuth, (req, res) => {
+  const list = db.listComments(req.params.id, req.user.id);
+  if (list === null) return res.status(404).json({ error: 'post not found' });
+  res.json({ comments: list });
+});
+app.post('/api/posts/:id/comments', requireAuth, (req, res) => {
+  const body = (req.body && req.body.body || '').trim();
+  if (!body) return res.status(400).json({ error: 'comment body required' });
+  const c = db.createComment(req.user.id, req.params.id, body);
+  if (!c) return res.status(404).json({ error: 'post not found' });
+  res.json({ comment: c });
+});
 app.post('/api/me/profile', requireAuth, (req, res) => {
   const u = db.updateProfile(req.user.id, req.body || {});
   if (!u) return res.status(400).json({ error: 'Could not update profile' });

@@ -39,6 +39,11 @@ const API = {
   updateProfile:(b)=>post('/api/me/profile',b),
   pinPost:(id)=>post('/api/posts/'+id+'/pin',{}),
   unpinPost:(id)=>post('/api/posts/'+id+'/unpin',{}),
+  comments:(id)=>getJSON('/api/posts/'+id+'/comments'),
+  addComment:(id,body)=>post('/api/posts/'+id+'/comments',{body}),
+  react:(id)=>post('/api/posts/'+id+'/react',{}),
+  deletePost:(id)=>post('/api/posts/'+id+'/delete',{}),
+  deleteComment:(id)=>post('/api/comments/'+id+'/delete',{}),
   matchCandidates:()=>getJSON('/api/match/candidates'),
   matches:()=>getJSON('/api/matches'),
   userProfile:(id)=>getJSON('/api/users/'+id),
@@ -109,6 +114,11 @@ function toast(msg){
   t.style.cssText='position:fixed;left:50%;bottom:32px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:11px 18px;border-radius:6px;font-size:13px;font-weight:600;z-index:300;animation:appfade .14s ease;letter-spacing:-0.01em';
   t.textContent=msg; document.body.appendChild(t);
   setTimeout(()=>t.remove(),2200);
+}
+function confirmModal(title, body, confirmLabel, onConfirm){
+  const m=modal(`<div class="h-md" style="margin-bottom:6px">${esc(title)}</div><div class="muted" style="font-size:13px;line-height:1.5;margin-bottom:16px">${esc(body)}</div><div style="display:flex;gap:8px"><button class="btn btn-ghost" data-cancel style="flex:1">Cancel</button><button class="btn btn-primary" data-confirm style="flex:1;background:var(--accent-dark);border-color:var(--accent-dark)">${esc(confirmLabel||'Confirm')}</button></div>`);
+  m.el.querySelector('[data-cancel]').addEventListener('click', m.close);
+  m.el.querySelector('[data-confirm]').addEventListener('click', async ()=>{ m.close(); await onConfirm(); });
 }
 async function reportFlow(targetType, targetId){
   const m=modal(`<div class="h-md" style="margin-bottom:6px">Report this ${targetType}?</div><div class="muted" style="font-size:13px;line-height:1.5;margin-bottom:14px">A moderator will review it. Optional: tell us why.</div><textarea class="input" id="rrz" rows="3" placeholder="Reason (optional)" style="font-size:14px;resize:none"></textarea><div style="display:flex;gap:8px;margin-top:14px"><button class="btn btn-ghost" data-cancel style="flex:1">Cancel</button><button class="btn btn-primary" data-send style="flex:1">Send report</button></div>`);
@@ -300,9 +310,9 @@ async function hydrateTribe(){
       return `<div data-vote="${p.id}:${i}" style="position:relative;border:1.5px solid var(--ink);border-radius:6px;padding:10px 14px;margin-top:8px;cursor:pointer;overflow:hidden;background:var(--surface)"><div style="position:absolute;inset:0;background:${isMine?'var(--accent)':'var(--acc-100)'};width:${o.pct}%;transition:width .3s ease"></div><div style="position:relative;display:flex;justify-content:space-between;align-items:center;font-size:14px;font-weight:500;color:${isMine?'var(--accent-ink)':'var(--ink)'}"><span>${esc(o.text)}${isMine?' <i class="ph ph-check"></i>':''}</span><span style="font-weight:700">${o.pct}%</span></div></div>`;
     }).join('') + `<div class="muted" style="font-size:12px;margin-top:10px">${p.totalVotes} vote${p.totalVotes===1?'':'s'}${voted?' · tap to change':''}</div>`;
   };
-  const postHtml=p=>`<div style="padding:14px 0;border-bottom:1px solid var(--line);${p.pinned?'background:var(--acc-50);margin:0 -20px;padding:14px 20px':''}"><div style="display:flex;align-items:center;gap:11px"><div class="mono s ${p.author.tone}">${p.author.mono}</div><div class="grow"><div style="display:flex;align-items:center;gap:8px"><div class="nm" style="font-size:14px">${esc(p.author.name)}</div>${p.type==='poll'?'<span class="eyebrow" style="font-size:9px"><i class="ph ph-chart-bar"></i> poll</span>':''}${p.pinned?'<span class="eyebrow" style="font-size:9px"><i class="ph ph-push-pin-simple"></i> pinned</span>':''}</div><div class="sub">${p.ago}</div></div>${p.mine?`<button class="icon-btn" data-${p.pinned?'unpin':'pin'}-post="${p.id}" title="${p.pinned?'Unpin':'Pin for 24h'}" style="width:30px;height:30px;font-size:15px;color:${p.pinned?'var(--accent)':'var(--ink-soft)'}"><i class="ph ph-push-pin-simple${p.pinned?'-slash':''}"></i></button>`:''}<button class="icon-btn" data-report-post="${p.id}" title="Report this post" style="width:30px;height:30px;font-size:15px;color:var(--ink-soft)"><i class="ph ph-flag"></i></button></div><p style="font-size:14px;line-height:1.5;margin:10px 0 0;${p.type==='poll'?'font-weight:600':''}">${esc(p.body)}</p>${p.type==='poll'?pollBody(p):''}</div>`;
+  const postHtml=p=>`<div style="padding:14px 0;border-bottom:1px solid var(--line);${p.pinned?'background:var(--acc-50);margin:0 -20px;padding:14px 20px':''}"><div style="display:flex;align-items:center;gap:11px"><div class="mono s ${p.author.tone}">${p.author.mono}</div><div class="grow"><div style="display:flex;align-items:center;gap:8px"><div class="nm" style="font-size:14px">${esc(p.author.name)}</div>${p.type==='poll'?'<span class="eyebrow" style="font-size:9px"><i class="ph ph-chart-bar"></i> poll</span>':''}${p.pinned?'<span class="eyebrow" style="font-size:9px"><i class="ph ph-push-pin-simple"></i> pinned</span>':''}</div><div class="sub">${p.ago}</div></div>${p.mine?`<button class="icon-btn" data-${p.pinned?'unpin':'pin'}-post="${p.id}" title="${p.pinned?'Unpin':'Pin for 24h'}" style="width:30px;height:30px;font-size:15px;color:${p.pinned?'var(--accent)':'var(--ink-soft)'}"><i class="ph ph-push-pin-simple${p.pinned?'-slash':''}"></i></button><button class="icon-btn" data-delete-post="${p.id}" title="Delete post" style="width:30px;height:30px;font-size:15px;color:var(--ink-soft)"><i class="ph ph-trash"></i></button>`:`<button class="icon-btn" data-report-post="${p.id}" title="Report this post" style="width:30px;height:30px;font-size:15px;color:var(--ink-soft)"><i class="ph ph-flag"></i></button>`}</div><p style="font-size:14px;line-height:1.5;margin:10px 0 0;${p.type==='poll'?'font-weight:600':''}">${esc(p.body)}</p>${p.type==='poll'?pollBody(p):''}<div style="display:flex;align-items:center;gap:20px;margin-top:11px"><button data-react="${p.id}" style="display:inline-flex;align-items:center;gap:6px;background:none;border:none;padding:3px 0;font:inherit;font-size:13px;font-weight:600;color:${p.reacted?'var(--accent)':'var(--ink-soft)'};cursor:pointer"><i class="${p.reacted?'ph-fill':'ph'} ph-heart" style="font-size:16px"></i><span data-rc="${p.id}">${p.reactions||''}</span></button><button data-toggle-comments="${p.id}" style="display:inline-flex;align-items:center;gap:6px;background:none;border:none;padding:3px 0;font:inherit;font-size:13px;font-weight:600;color:var(--ink-soft);cursor:pointer"><i class="ph ph-chat-teardrop-text" style="font-size:15px"></i><span data-cc="${p.id}">${p.commentCount ? p.commentCount + (p.commentCount===1?' reply':' replies') : 'Reply'}</span></button></div><div data-comment-thread="${p.id}" style="display:none"></div></div>`;
   const hornHtml=h=>`<div data-horn-id="${h.id}" style="border:1.5px solid var(--accent);background:var(--acc-50);border-radius:8px;padding:14px;margin-bottom:10px;position:relative"><div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><div class="mono xs ${h.author.tone}">${h.author.mono}</div><div class="grow"><div class="nm" style="font-size:13px">${esc(h.author.name)}</div></div><div class="eyebrow" style="display:flex;align-items:center;gap:4px"><i class="ph ph-megaphone-simple"></i>${h.expires_in_min < 60 ? h.expires_in_min + 'm left' : Math.round(h.expires_in_min/60) + 'h left'}</div></div><p style="font-size:15px;line-height:1.45;color:var(--ink);font-weight:500">${esc(h.body)}</p></div>`;
-  const memberHtml=m=>`<div class="row"><div class="mono s ${m.tone}">${m.mono}</div><div class="grow"><div class="nm">${esc(m.name)}</div><div class="sub">${esc(m.handle||'')}</div></div></div>`;
+  const memberHtml=m=>`<div class="row" ${m.you?'':`data-member-uid="${m.id}"`} style="${m.you?'':'cursor:pointer'}"><div class="mono s ${m.tone}">${m.mono}</div><div class="grow"><div class="nm">${esc(m.name)}${m.you?' <span class="muted" style="font-weight:500;font-size:12px">· you</span>':''}</div><div class="sub">${esc(m.handle||'')}</div></div>${m.you?'':'<i class="ph ph-caret-right soft"></i>'}</div>`;
   const horns = t.horns || [];
   const hornsBlock = horns.length ? `<div style="margin-bottom:14px"><div class="eyebrow" style="margin-bottom:9px;display:flex;align-items:center;gap:6px"><i class="ph ph-megaphone-simple"></i>sounding right now</div>${horns.map(hornHtml).join('')}</div>` : '';
   const postsPane=()=> hornsBlock + (t.posts.length? t.posts.map(postHtml).join('') : '<div class="muted" style="padding:18px 0;font-size:14px">No posts yet — be the first.</div>');
@@ -313,12 +323,47 @@ async function hydrateTribe(){
     `<div class="tabs" style="margin-top:20px"><span class="tab on" data-tab="posts">posts</span><span class="tab" data-tab="members">members</span><span class="tab" data-tab="about">about</span></div>`+
     `<div data-pane style="padding-top:6px">${postsPane()}</div>`;
   const pane=sc.querySelector('[data-pane]');
+  // post-level actions (vote / report / pin / comment) — re-bound whenever the posts pane is rendered
+  const wirePosts=(root)=>{
+    root.querySelectorAll('[data-vote]').forEach(b=>b.addEventListener('click', async e=>{
+      e.stopPropagation();
+      const [pid, idx] = b.dataset.vote.split(':');
+      try { await API.votePoll(pid, Number(idx)); hydrateTribe(); } catch { toast('Could not vote.'); }
+    }));
+    root.querySelectorAll('[data-report-post]').forEach(b=>b.addEventListener('click', e=>{
+      e.stopPropagation(); reportFlow('post', Number(b.dataset.reportPost));
+    }));
+    root.querySelectorAll('[data-pin-post]').forEach(b=>b.addEventListener('click', async e=>{
+      e.stopPropagation(); try { await API.pinPost(Number(b.dataset.pinPost)); toast('Pinned for 24h.'); hydrateTribe(); } catch { toast('Could not pin.'); }
+    }));
+    root.querySelectorAll('[data-unpin-post]').forEach(b=>b.addEventListener('click', async e=>{
+      e.stopPropagation(); try { await API.unpinPost(Number(b.dataset.unpinPost)); toast('Unpinned.'); hydrateTribe(); } catch { toast('Could not unpin.'); }
+    }));
+    root.querySelectorAll('[data-toggle-comments]').forEach(b=>b.addEventListener('click', e=>{
+      e.stopPropagation(); toggleComments(root, Number(b.dataset.toggleComments));
+    }));
+    root.querySelectorAll('[data-delete-post]').forEach(b=>b.addEventListener('click', e=>{
+      e.stopPropagation(); confirmModal('Delete this post?', "This removes the post and its replies. This can't be undone.", 'Delete', async ()=>{
+        try { await API.deletePost(Number(b.dataset.deletePost)); toast('Post deleted.'); hydrateTribe(); } catch { toast('Could not delete.'); }
+      });
+    }));
+    root.querySelectorAll('[data-react]').forEach(b=>b.addEventListener('click', async e=>{
+      e.stopPropagation(); const id=Number(b.dataset.react);
+      try {
+        const r=await API.react(id);
+        const icon=b.querySelector('i'); const cnt=b.querySelector(`[data-rc="${id}"]`);
+        b.style.color = r.reacted ? 'var(--accent)' : 'var(--ink-soft)';
+        icon.className = (r.reacted?'ph-fill':'ph') + ' ph-heart';
+        if(cnt) cnt.textContent = r.reactions || '';
+      } catch { toast('Could not react.'); }
+    }));
+  };
   sc.querySelectorAll('.tab').forEach(tb=>tb.addEventListener('click',()=>{
     sc.querySelectorAll('.tab').forEach(x=>x.classList.remove('on')); tb.classList.add('on');
     const k=tb.dataset.tab;
-    pane.innerHTML = k==='members' ? (t.members_list.length?t.members_list.map(memberHtml).join(''):'<div class="muted" style="padding:18px 0">No members yet.</div>')
-      : k==='about' ? `<p class="muted" style="font-size:14px;line-height:1.6;padding-top:6px">${esc(t.description)}</p>`
-      : postsPane();
+    if(k==='members'){ pane.innerHTML = t.members_list.length?t.members_list.map(memberHtml).join(''):'<div class="muted" style="padding:18px 0">No members yet.</div>'; pane.querySelectorAll('[data-member-uid]').forEach(el=>el.addEventListener('click',()=>goProfile(el.dataset.memberUid))); }
+    else if(k==='about'){ pane.innerHTML = `<p class="muted" style="font-size:14px;line-height:1.6;padding-top:6px">${esc(t.description)}</p>`; }
+    else { pane.innerHTML = postsPane(); wirePosts(pane); }
   }));
   sc.querySelector('[data-toggle]')?.addEventListener('click', async e=>{ e.currentTarget.style.pointerEvents='none'; try{ t.joined?await API.leave(slug):await API.join(slug);}catch{} hydrateTribe(); });
   sc.querySelector('[data-compose]')?.addEventListener('click', ()=>go('15_create'));
@@ -330,20 +375,53 @@ async function hydrateTribe(){
   });
   sc.querySelector('[data-horn]')?.addEventListener('click', ()=>hornFlow(slug));
   sc.querySelector('[data-poll]')?.addEventListener('click', ()=>pollFlow(slug));
-  sc.querySelectorAll('[data-vote]').forEach(b=>b.addEventListener('click', async e=>{
+  wirePosts(pane);
+}
+
+// expand / collapse the inline comment thread under a post, lazy-loading comments
+const commentMono = me => `<div class="mono xs ${me.author.tone}">${me.author.mono}</div>`;
+function commentRow(c){
+  return `<div data-comment-id="${c.id}" style="display:flex;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)">${commentMono(c)}<div class="grow" style="min-width:0"><div style="display:flex;align-items:baseline;gap:7px"><span class="nm" style="font-size:13px">${esc(c.author.name)}</span><span class="sub" style="margin:0;font-size:11px">${c.ago}</span></div><p style="font-size:14px;line-height:1.45;margin:3px 0 0;white-space:pre-wrap;word-break:break-word">${esc(c.body)}</p></div>${c.mine?`<button class="icon-btn" data-del-comment="${c.id}" title="Delete reply" style="width:26px;height:26px;font-size:13px;color:var(--ink-soft);flex:none"><i class="ph ph-trash"></i></button>`:''}</div>`;
+}
+async function toggleComments(root, postId){
+  const thread = root.querySelector(`[data-comment-thread="${postId}"]`);
+  if(!thread) return;
+  if(thread.style.display !== 'none'){ thread.style.display='none'; thread.innerHTML=''; return; }
+  thread.style.display='block';
+  thread.innerHTML = `<div class="muted" style="font-size:13px;padding:10px 0">Loading…</div>`;
+  const r = await API.comments(postId).catch(()=>null);
+  const list = r?.comments || [];
+  const me = STATE.user || {};
+  thread.innerHTML =
+    `<div data-clist style="border-top:1px solid var(--line);margin-top:4px">${list.map(commentRow).join('')}</div>`+
+    `<div style="display:flex;gap:9px;align-items:center;padding:11px 0 4px">`+
+      `<input data-cinput class="" autocomplete="off" placeholder="Write a reply…" maxlength="500" style="flex:1;padding:9px 14px;border-radius:999px;border:1.5px solid var(--ink);background:var(--surface);outline:none;font-size:14px;font-family:inherit;color:var(--ink)">`+
+      `<button data-csend class="btn btn-primary" style="width:40px;height:40px;padding:0;border-radius:10px;display:grid;place-items:center;flex:none"><i class="ph ph-paper-plane-right" style="font-size:16px"></i></button>`+
+    `</div>`;
+  const listEl = thread.querySelector('[data-clist]');
+  const input = thread.querySelector('[data-cinput]');
+  const sendBtn = thread.querySelector('[data-csend]');
+  const refreshLabel = ()=>{ const n=listEl.querySelectorAll(':scope > [data-comment-id]').length; const lbl=root.querySelector(`[data-cc="${postId}"]`); if(lbl) lbl.textContent = n ? n+(n===1?' reply':' replies') : 'Reply'; };
+  listEl.addEventListener('click', e=>{
+    const del=e.target.closest('[data-del-comment]'); if(!del) return;
     e.stopPropagation();
-    const [pid, idx] = b.dataset.vote.split(':');
-    try { await API.votePoll(pid, Number(idx)); hydrateTribe(); } catch { toast('Could not vote.'); }
-  }));
-  sc.querySelectorAll('[data-report-post]').forEach(b=>b.addEventListener('click', e=>{
-    e.stopPropagation(); reportFlow('post', Number(b.dataset.reportPost));
-  }));
-  sc.querySelectorAll('[data-pin-post]').forEach(b=>b.addEventListener('click', async e=>{
-    e.stopPropagation(); try { await API.pinPost(Number(b.dataset.pinPost)); toast('Pinned for 24h.'); hydrateTribe(); } catch { toast('Could not pin.'); }
-  }));
-  sc.querySelectorAll('[data-unpin-post]').forEach(b=>b.addEventListener('click', async e=>{
-    e.stopPropagation(); try { await API.unpinPost(Number(b.dataset.unpinPost)); toast('Unpinned.'); hydrateTribe(); } catch { toast('Could not unpin.'); }
-  }));
+    confirmModal('Delete this reply?', 'This permanently removes your reply.', 'Delete', async ()=>{
+      try { await API.deleteComment(Number(del.dataset.delComment)); del.closest('[data-comment-id]')?.remove(); refreshLabel(); }
+      catch { toast('Could not delete.'); }
+    });
+  });
+  const submit = async ()=>{
+    const v = (input.value||'').trim(); if(!v) return; input.value=''; input.focus();
+    try {
+      const res = await API.addComment(postId, v);
+      const c = res.comment;
+      listEl.insertAdjacentHTML('beforeend', commentRow(c));
+      refreshLabel();
+    } catch { toast('Could not post reply.'); }
+  };
+  sendBtn.addEventListener('click', submit);
+  input.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); submit(); } });
+  setTimeout(()=>input.focus(), 40);
 }
 
 function hornFlow(slug){
@@ -564,7 +642,7 @@ async function hydrateChat(){
   if(composeInput){ const inp=document.createElement('input'); inp.id='msgbox'; inp.placeholder='Message…'; inp.autocomplete='off';
     inp.style.cssText='flex:1;padding:11px 16px;border-radius:999px;border:1.5px solid var(--ink);background:var(--surface);outline:none;font-size:15px;font-family:inherit;color:var(--ink)';
     composeInput.replaceWith(inp); }
-  const btns=stage.querySelectorAll('.icon-btn'); const send=btns[btns.length-1];
+  const send=stage.querySelector('.btn-primary');
   const doSend=async ()=>{ const mb=document.getElementById('msgbox'); const v=(mb?.value||'').trim(); if(!v)return; mb.value='';
     sc.insertAdjacentHTML('beforeend',`<div class="bubble me">${esc(v)}</div>`); sc.scrollTop=sc.scrollHeight; lastCount++;
     try{ await API.sendMessage(id,v); }catch{} };
@@ -577,13 +655,13 @@ async function hydrateChat(){
 async function hydrateNotifications(){
   const sc=stage.querySelector('.scroll'); if(!sc) return;
   const r=await API.notifications().catch(()=>null); const list=r?.notifications||[];
-  const iconFor = t => t==='horn'?'ph-megaphone-simple':t==='vote'?'ph-chart-bar':t==='message'?'ph-chat-circle':'ph-handshake';
+  const iconFor = t => t==='horn'?'ph-megaphone-simple':t==='vote'?'ph-chart-bar':t==='comment'?'ph-chat-teardrop-text':t==='message'?'ph-chat-circle':'ph-handshake';
   const row=n=>`<div class="row" data-uid="${n.actor.id}" data-type="${n.type}" data-slug="${n.slug||''}"><div class="mono s ${n.actor.tone}">${n.actor.mono}</div><div class="grow" style="white-space:normal"><div style="font-size:14px;line-height:1.4;display:flex;align-items:flex-start;gap:8px"><i class="ph ${iconFor(n.type)}" style="font-size:14px;color:var(--accent);margin-top:3px;flex:none"></i><span>${esc(n.text)}</span></div><div class="sub" style="margin-top:3px">${n.ago}</div></div>${n.unread?'<span class="dot-unread"></span>':''}</div>`;
   sc.innerHTML = list.length ? list.map(row).join('') : `<div class="muted" style="font-size:14px;padding:28px 4px;text-align:center;line-height:1.5">Nothing yet — connect with people and the activity shows up here.</div>`;
   sc.querySelectorAll('[data-uid]').forEach(el=>el.addEventListener('click', ()=>{
     const type = el.dataset.type;
     if (type === 'message') return goChat(el.dataset.uid);
-    if (type === 'horn' || type === 'vote') {
+    if (type === 'horn' || type === 'vote' || type === 'comment') {
       const slug = el.dataset.slug; if (slug) return goTribe(slug);
     }
     goProfile(el.dataset.uid);
