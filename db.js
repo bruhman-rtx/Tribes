@@ -6,6 +6,9 @@ const crypto = require('crypto');
 const DIR = process.env.DB_DIR || path.join(__dirname, 'data');
 fs.mkdirSync(DIR, { recursive: true });
 const FILE = path.join(DIR, 'tribes.json');
+// uploaded images live on the same persistent volume as the DB, served at /uploads
+const UPLOADS = path.join(DIR, 'uploads');
+fs.mkdirSync(UPLOADS, { recursive: true });
 
 const CATALOG = {
   creative: ['Film Photography','Ceramics','Typography','Illustration','Vinyl','Poetry','Printmaking','Sketching'],
@@ -119,6 +122,7 @@ function postPublic(p, viewerId) {
     ago: ago(p.created_at),
     author: { id: u.id, name: u.name || 'Someone', mono: (u.name || '?')[0].toLowerCase(), tone: u.tone || 't1', handle: u.handle },
     type: p.type || 'post',
+    image: p.image || null,
     expires_at: p.expires_at || null,
     pinned_until: p.pinned_until || null,
     commentCount: data.comments.filter(c => c.post_id === p.id).length,
@@ -224,7 +228,7 @@ function scheduleReply(convId, fromId) {
 }
 
 module.exports = {
-  raw: data, CATALOG, publicUser, persistNow, ago,
+  raw: data, CATALOG, publicUser, persistNow, ago, UPLOADS,
 
   createUser({ name, email, password_hash, city }) {
     const handle = '@' + String(name).toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 14);
@@ -302,6 +306,7 @@ module.exports = {
     else if (opts.type === 'poll') type = 'poll';
     const maxLen = type === 'horn' ? 140 : 280;
     const p = { id: ++data.seq.posts, tribe_id: t.id, user_id: uid, body: String(body).slice(0, maxLen), created_at: Date.now(), type };
+    if (type === 'post' && typeof opts.image === 'string' && /^\/uploads\/[A-Za-z0-9._-]+$/.test(opts.image)) p.image = opts.image;
     if (type === 'horn') {
       const hours = Math.min(6, Math.max(0.25, Number(opts.expiresHours) || 2));
       p.expires_at = Date.now() + Math.round(hours * 3600 * 1000);
@@ -449,7 +454,8 @@ module.exports = {
     otherId = Number(otherId);
     if (otherId === viewerId || !module.exports.userById(otherId)) return null;
     const conv = getOrCreateConv(viewerId, otherId);
-    const m = { id: ++data.seq.messages, conversation_id: conv.id, sender_id: viewerId, body: String(body).slice(0, 2000), created_at: Date.now(), read_at: Date.now() };
+    // read_at is set when the RECIPIENT opens the thread (conversationWith); a freshly-sent message is unread by them
+    const m = { id: ++data.seq.messages, conversation_id: conv.id, sender_id: viewerId, body: String(body).slice(0, 2000), created_at: Date.now(), read_at: null };
     data.messages.push(m);
     const other = module.exports.userById(otherId);
     if (other && other.seed) scheduleReply(conv.id, otherId);

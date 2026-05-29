@@ -32,7 +32,8 @@ const API = {
   myTribes:()=>getJSON('/api/me/tribes'),
   join:(slug)=>post('/api/tribes/'+slug+'/join',{}),
   leave:(slug)=>post('/api/tribes/'+slug+'/leave',{}),
-  createPost:(slug,body)=>post('/api/tribes/'+slug+'/posts',{body}),
+  createPost:(slug,body,image)=>post('/api/tribes/'+slug+'/posts',image?{body,image}:{body}),
+  uploadImage:(dataUrl)=>post('/api/upload',{image:dataUrl}),
   soundHorn:(slug,body,expiresHours)=>post('/api/tribes/'+slug+'/posts',{body,type:'horn',expiresHours}),
   createPoll:(slug,body,options)=>post('/api/tribes/'+slug+'/posts',{body,type:'poll',options}),
   votePoll:(id,optionIndex)=>post('/api/posts/'+id+'/vote',{optionIndex}),
@@ -310,7 +311,7 @@ async function hydrateTribe(){
       return `<div data-vote="${p.id}:${i}" style="position:relative;border:1.5px solid var(--ink);border-radius:6px;padding:10px 14px;margin-top:8px;cursor:pointer;overflow:hidden;background:var(--surface)"><div style="position:absolute;inset:0;background:${isMine?'var(--accent)':'var(--acc-100)'};width:${o.pct}%;transition:width .3s ease"></div><div style="position:relative;display:flex;justify-content:space-between;align-items:center;font-size:14px;font-weight:500;color:${isMine?'var(--accent-ink)':'var(--ink)'}"><span>${esc(o.text)}${isMine?' <i class="ph ph-check"></i>':''}</span><span style="font-weight:700">${o.pct}%</span></div></div>`;
     }).join('') + `<div class="muted" style="font-size:12px;margin-top:10px">${p.totalVotes} vote${p.totalVotes===1?'':'s'}${voted?' · tap to change':''}</div>`;
   };
-  const postHtml=p=>`<div style="padding:14px 0;border-bottom:1px solid var(--line);${p.pinned?'background:var(--acc-50);margin:0 -20px;padding:14px 20px':''}"><div style="display:flex;align-items:center;gap:11px"><div class="mono s ${p.author.tone}">${p.author.mono}</div><div class="grow"><div style="display:flex;align-items:center;gap:8px"><div class="nm" style="font-size:14px">${esc(p.author.name)}</div>${p.type==='poll'?'<span class="eyebrow" style="font-size:9px"><i class="ph ph-chart-bar"></i> poll</span>':''}${p.pinned?'<span class="eyebrow" style="font-size:9px"><i class="ph ph-push-pin-simple"></i> pinned</span>':''}</div><div class="sub">${p.ago}</div></div>${p.mine?`<button class="icon-btn" data-${p.pinned?'unpin':'pin'}-post="${p.id}" title="${p.pinned?'Unpin':'Pin for 24h'}" style="width:30px;height:30px;font-size:15px;color:${p.pinned?'var(--accent)':'var(--ink-soft)'}"><i class="ph ph-push-pin-simple${p.pinned?'-slash':''}"></i></button><button class="icon-btn" data-delete-post="${p.id}" title="Delete post" style="width:30px;height:30px;font-size:15px;color:var(--ink-soft)"><i class="ph ph-trash"></i></button>`:`<button class="icon-btn" data-report-post="${p.id}" title="Report this post" style="width:30px;height:30px;font-size:15px;color:var(--ink-soft)"><i class="ph ph-flag"></i></button>`}</div><p style="font-size:14px;line-height:1.5;margin:10px 0 0;${p.type==='poll'?'font-weight:600':''}">${esc(p.body)}</p>${p.type==='poll'?pollBody(p):''}<div style="display:flex;align-items:center;gap:20px;margin-top:11px"><button data-react="${p.id}" style="display:inline-flex;align-items:center;gap:6px;background:none;border:none;padding:3px 0;font:inherit;font-size:13px;font-weight:600;color:${p.reacted?'var(--accent)':'var(--ink-soft)'};cursor:pointer"><i class="${p.reacted?'ph-fill':'ph'} ph-heart" style="font-size:16px"></i><span data-rc="${p.id}">${p.reactions||''}</span></button><button data-toggle-comments="${p.id}" style="display:inline-flex;align-items:center;gap:6px;background:none;border:none;padding:3px 0;font:inherit;font-size:13px;font-weight:600;color:var(--ink-soft);cursor:pointer"><i class="ph ph-chat-teardrop-text" style="font-size:15px"></i><span data-cc="${p.id}">${p.commentCount ? p.commentCount + (p.commentCount===1?' reply':' replies') : 'Reply'}</span></button></div><div data-comment-thread="${p.id}" style="display:none"></div></div>`;
+  const postHtml=p=>`<div style="padding:14px 0;border-bottom:1px solid var(--line);${p.pinned?'background:var(--acc-50);margin:0 -20px;padding:14px 20px':''}"><div style="display:flex;align-items:center;gap:11px"><div class="mono s ${p.author.tone}">${p.author.mono}</div><div class="grow"><div style="display:flex;align-items:center;gap:8px"><div class="nm" style="font-size:14px">${esc(p.author.name)}</div>${p.type==='poll'?'<span class="eyebrow" style="font-size:9px"><i class="ph ph-chart-bar"></i> poll</span>':''}${p.pinned?'<span class="eyebrow" style="font-size:9px"><i class="ph ph-push-pin-simple"></i> pinned</span>':''}</div><div class="sub">${p.ago}</div></div>${p.mine?`<button class="icon-btn" data-${p.pinned?'unpin':'pin'}-post="${p.id}" title="${p.pinned?'Unpin':'Pin for 24h'}" style="width:30px;height:30px;font-size:15px;color:${p.pinned?'var(--accent)':'var(--ink-soft)'}"><i class="ph ph-push-pin-simple${p.pinned?'-slash':''}"></i></button><button class="icon-btn" data-delete-post="${p.id}" title="Delete post" style="width:30px;height:30px;font-size:15px;color:var(--ink-soft)"><i class="ph ph-trash"></i></button>`:`<button class="icon-btn" data-report-post="${p.id}" title="Report this post" style="width:30px;height:30px;font-size:15px;color:var(--ink-soft)"><i class="ph ph-flag"></i></button>`}</div>${p.body?`<p style="font-size:14px;line-height:1.5;margin:10px 0 0;${p.type==='poll'?'font-weight:600':''}">${esc(p.body)}</p>`:''}${p.image?`<img src="${esc(p.image)}" loading="lazy" alt="" style="margin-top:10px;width:100%;border-radius:8px;border:1.5px solid var(--ink);display:block">`:''}${p.type==='poll'?pollBody(p):''}<div style="display:flex;align-items:center;gap:20px;margin-top:11px"><button data-react="${p.id}" style="display:inline-flex;align-items:center;gap:6px;background:none;border:none;padding:3px 0;font:inherit;font-size:13px;font-weight:600;color:${p.reacted?'var(--accent)':'var(--ink-soft)'};cursor:pointer"><i class="${p.reacted?'ph-fill':'ph'} ph-heart" style="font-size:16px"></i><span data-rc="${p.id}">${p.reactions||''}</span></button><button data-toggle-comments="${p.id}" style="display:inline-flex;align-items:center;gap:6px;background:none;border:none;padding:3px 0;font:inherit;font-size:13px;font-weight:600;color:var(--ink-soft);cursor:pointer"><i class="ph ph-chat-teardrop-text" style="font-size:15px"></i><span data-cc="${p.id}">${p.commentCount ? p.commentCount + (p.commentCount===1?' reply':' replies') : 'Reply'}</span></button></div><div data-comment-thread="${p.id}" style="display:none"></div></div>`;
   const hornHtml=h=>`<div data-horn-id="${h.id}" style="border:1.5px solid var(--accent);background:var(--acc-50);border-radius:8px;padding:14px;margin-bottom:10px;position:relative"><div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><div class="mono xs ${h.author.tone}">${h.author.mono}</div><div class="grow"><div class="nm" style="font-size:13px">${esc(h.author.name)}</div></div><div class="eyebrow" style="display:flex;align-items:center;gap:4px"><i class="ph ph-megaphone-simple"></i>${h.expires_in_min < 60 ? h.expires_in_min + 'm left' : Math.round(h.expires_in_min/60) + 'h left'}</div></div><p style="font-size:15px;line-height:1.45;color:var(--ink);font-weight:500">${esc(h.body)}</p></div>`;
   const memberHtml=m=>`<div class="row" ${m.you?'':`data-member-uid="${m.id}"`} style="${m.you?'':'cursor:pointer'}"><div class="mono s ${m.tone}">${m.mono}</div><div class="grow"><div class="nm">${esc(m.name)}${m.you?' <span class="muted" style="font-weight:500;font-size:12px">· you</span>':''}</div><div class="sub">${esc(m.handle||'')}</div></div>${m.you?'':'<i class="ph ph-caret-right soft"></i>'}</div>`;
   const horns = t.horns || [];
@@ -498,12 +499,39 @@ async function hydrateCreate(){
   const tname = slug ? slug.replace(/-/g,' ').replace(/\b\w/g,c=>c.toUpperCase()) : 'Pick a tribe';
   const sc=stage.querySelector('.scroll');
   sc.innerHTML = `<div style="display:flex;align-items:center;gap:11px;margin-bottom:16px"><div class="mono s ${STATE.user?.tone||'t1'}">${(STATE.user?.name||'?')[0].toLowerCase()}</div><div class="chip on">Posting to: ${esc(tname)} <i class="ph ph-caret-down"></i></div></div>`+
-    `<textarea id="pbody" placeholder="Share something with the tribe…" style="width:100%;min-height:220px;resize:none;font-family:inherit;font-size:17px;line-height:1.5;border:none;background:transparent;padding:0;outline:none;color:var(--ink)"></textarea>`;
+    `<textarea id="pbody" placeholder="Share something with the tribe…" style="width:100%;min-height:160px;resize:none;font-family:inherit;font-size:17px;line-height:1.5;border:none;background:transparent;padding:0;outline:none;color:var(--ink)"></textarea>`+
+    `<div data-img-preview style="margin-top:6px"></div>`+
+    `<input type="file" accept="image/png,image/jpeg,image/gif,image/webp" data-file style="display:none">`;
+  let uploadedUrl=null;
+  const preview=sc.querySelector('[data-img-preview]');
+  const fileInput=sc.querySelector('[data-file]');
+  const renderPreview=()=>{
+    preview.innerHTML = uploadedUrl
+      ? `<div style="position:relative;display:inline-block;max-width:100%"><img src="${esc(uploadedUrl)}" style="max-width:100%;border-radius:8px;border:1.5px solid var(--ink);display:block"><button data-remove-img title="Remove photo" style="position:absolute;top:8px;right:8px;width:32px;height:32px;border-radius:8px;background:var(--ink);color:var(--bg);border:none;cursor:pointer;display:grid;place-items:center;font-size:15px"><i class="ph ph-x"></i></button></div>`
+      : '';
+    preview.querySelector('[data-remove-img]')?.addEventListener('click', ()=>{ uploadedUrl=null; renderPreview(); });
+  };
+  // bottom-bar image button -> hidden file input (custom trigger; OS picker only)
+  const imgBtn=[...stage.querySelectorAll('.icon-btn')].find(b=>b.querySelector('.ph-image'));
+  imgBtn && imgBtn.addEventListener('click', ()=>fileInput.click());
+  fileInput.addEventListener('change', ()=>{
+    const f=fileInput.files && fileInput.files[0]; fileInput.value='';
+    if(!f) return;
+    if(f.size > 5*1024*1024){ toast('Image too large (max 5MB).'); return; }
+    preview.innerHTML='<div class="muted" style="font-size:13px;padding:8px 0">Uploading photo…</div>';
+    const reader=new FileReader();
+    reader.onload=async ()=>{
+      try{ const r=await API.uploadImage(reader.result); uploadedUrl=r.url; renderPreview(); }
+      catch(e){ uploadedUrl=null; renderPreview(); toast(e.message||'Could not upload photo.'); }
+    };
+    reader.onerror=()=>{ renderPreview(); toast('Could not read that file.'); };
+    reader.readAsDataURL(f);
+  });
   const postBtn=stage.querySelector('.topbar .btn-primary');
   postBtn && postBtn.addEventListener('click', async ()=>{
     const body=(document.getElementById('pbody')?.value||'').trim();
-    if(!body||!slug) return; postBtn.style.pointerEvents='none';
-    try{ await API.createPost(slug, body); STATE.currentTribe=slug; back(); }catch{ postBtn.style.pointerEvents=''; }
+    if((!body && !uploadedUrl)||!slug) return; postBtn.style.pointerEvents='none';
+    try{ await API.createPost(slug, body, uploadedUrl); STATE.currentTribe=slug; back(); }catch(e){ postBtn.style.pointerEvents=''; toast(e.message||'Could not post.'); }
   });
   on('.topbar span:first-child', back);
 }
